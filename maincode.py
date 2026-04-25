@@ -60,7 +60,7 @@ if st.session_state.historial_fugas:
         st.sidebar.markdown(f"""
             <div class='bitacora-item'>
                 <small>{ev['fecha']}</small><br>
-                <span class='{clase}'>⚠️ FALLO DE {ev['tipo']}</span>
+                <span class='{clase}'>⚠️ ALERTA / CONSUMO EXCESIVO DE {ev['tipo']}</span>
             </div>
         """, unsafe_allow_html=True)
 else:
