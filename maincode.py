@@ -6,14 +6,14 @@ import os
 # 1. Configuración de pantalla
 st.set_page_config(page_title="CODESO Smart Home HMI", layout="wide")
 
-# 2. Estilo CSS (Semiótica de color para HMI)
+# 2. Estilos CSS (Semiótica de color)
 st.markdown("""
     <style>
     .stMetric { border-radius: 15px; background-color: #ffffff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 5px solid #0077B6; }
-    .bitacora-item { padding: 10px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+    .bitacora-item { padding: 10px; border-bottom: 1px solid #eee; font-size: 0.85rem; }
     .falla-agua { color: #0077B6; font-weight: bold; }
-    .falla-luz { color: #FFB703; font-weight: bold; }
-    .falla-gas { color: #DC2626; font-weight: bold; }
+    .falla-luz { color: #E67E22; font-weight: bold; }
+    .falla-gas { color: #E74C3C; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -37,7 +37,7 @@ if 'corriendo' not in st.session_state:
 if 'historial_fugas' not in st.session_state:
     st.session_state.historial_fugas = []
 
-# --- SIDEBAR (Bitácora con Tipo de Fallo y Fecha) ---
+# --- SIDEBAR (Bitácora Clasificada) ---
 st.sidebar.title("🕹️ Panel de Control")
 
 c_play, c_pause = st.sidebar.columns(2)
@@ -55,8 +55,8 @@ st.sidebar.subheader("📋 Historial de Fallos")
 
 if st.session_state.historial_fugas:
     for ev in reversed(st.session_state.historial_fugas):
-        # Aplicar color según el tipo en la bitácora
-        clase = "falla-agua" if "AGUA" in ev['tipo'] else "falla-luz" if "LUZ" in ev['tipo'] or "ELEC" in ev['tipo'] else "falla-gas"
+        # Color dinámico en la bitácora
+        clase = "falla-agua" if ev['tipo'] == "AGUA" else "falla-luz" if ev['tipo'] == "LUZ" else "falla-gas"
         st.sidebar.markdown(f"""
             <div class='bitacora-item'>
                 <small>{ev['fecha']}</small><br>
@@ -64,7 +64,7 @@ if st.session_state.historial_fugas:
             </div>
         """, unsafe_allow_html=True)
 else:
-    st.sidebar.write("Sin registros.")
+    st.sidebar.write("Sin fallos registrados.")
 
 # --- CUERPO PRINCIPAL ---
 st.title("🏠 Centro de Control Residencial")
@@ -84,34 +84,37 @@ if df is not None:
     c3.metric("NIVEL GAS % 🔥", f"{gas_val}%")
     c4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
-    # Lógica de Detección y Clasificación para la Bitácora
+    # LÓGICA DE CLASIFICACIÓN DE FALLOS
     es_anomalia = str(actual.get('anomalia', '')).lower() == 'true'
     
     if es_anomalia:
-        texto_anomalia = str(actual.get('tipo_anomalia', '')).upper()
-        fecha_completa = str(actual.get('timestamp', 'S/F')).replace('T', ' ')[:16] # Formato: YYYY-MM-DD HH:MM
+        txt = str(actual.get('tipo_anomalia', '')).upper()
+        fecha = str(actual.get('timestamp', 'S/F')).replace('T', ' ')[:16]
         
-        # Clasificar el tipo de fallo para el usuario
-        if "AGUA" in texto_anomalia or "FUGA" in texto_anomalia:
-            tipo_usuario = "AGUA"
-        elif "ELEC" in texto_anomalia or "VOLT" in texto_anomalia or "LUMIN" in texto_anomalia:
-            tipo_usuario = "LUZ"
-        elif "GAS" in texto_anomalia:
-            tipo_usuario = "GAS"
+        # Determinación del tipo real de fallo
+        if any(palabra in txt for palabra in ["AGUA", "FUGA", "HIDRO"]):
+            tipo_real = "AGUA"
+        elif any(palabra in txt for palabra in ["GAS", "FLUJO", "LP"]):
+            tipo_real = "GAS"
         else:
-            tipo_usuario = "SISTEMA"
+            # Por descarte, si hay anomalía y no es agua/gas, es eléctrica
+            tipo_real = "LUZ"
 
-        # Guardar si no existe ya
-        registro = {"fecha": fecha_completa, "tipo": tipo_usuario, "idx": i}
+        # Guardar en historial (evitar duplicados por índice)
         if not any(entry['idx'] == i for entry in st.session_state.historial_fugas):
-            st.session_state.historial_fugas.append(registro)
+            st.session_state.historial_fugas.append({"fecha": fecha, "tipo": tipo_real, "idx": i})
         
-        st.error(f"🚨 **ALERTA:** Fallo de {tipo_usuario} detectado el {fecha_completa}")
+        st.error(f"🚨 **ALERTA DE {tipo_real}:** Detectada el {fecha}")
 
-    # Gráficas
+    # GRÁFICAS (UNA SOLA FILA)
+    st.divider()
     col_a, col_b = st.columns(2)
-    col_a.area_chart(ventana['consumo_agua'], color="#0077B6")
-    col_b.line_chart(ventana['consumo_electrico'], color="#FFB703")
+    with col_a:
+        st.subheader("Consumo de Agua")
+        st.area_chart(ventana['consumo_agua'], color="#0077B6")
+    with col_b:
+        st.subheader("Demanda Eléctrica")
+        st.line_chart(ventana['consumo_electrico'], color="#FFB703")
 
     # Motor de la simulación
     if st.session_state.corriendo:
@@ -120,4 +123,4 @@ if df is not None:
             time.sleep(0.5)
             st.rerun()
 else:
-    st.error("Sube el archivo 'datos_domotia.csv' a GitHub.")
+    st.error("Error: Archivo de datos no encontrado.")
