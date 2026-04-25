@@ -2,80 +2,70 @@ import streamlit as st
 import pandas as pd
 import time
 
-# Configuración de página - Estilo CODESO
-st.set_page_config(page_title="CODESO Smart Home", layout="wide", initial_sidebar_state="expanded")
+# 1. Configuración de pantalla completa y tema
+st.set_page_config(page_title="CODESO Smart Home HMI", layout="wide", initial_sidebar_state="collapsed")
 
-# CSS para semiótica visual (Azul=Agua, Ámbar=Luz)
+# 2. Estilo CSS Avanzado para que se vea "Premium"
 st.markdown("""
     <style>
-    .stMetric { border-radius: 10px; background-color: #ffffff; border: 1px solid #e0e0e0; }
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+    html, body, [class*="css"]  { font-family: 'Roboto', sans-serif; }
+    .stMetric { border-radius: 15px; background-color: #ffffff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 5px solid #0077B6; }
+    div[data-testid="stMetricValue"] { font-size: 1.8rem; font-weight: bold; }
+    .status-box { padding: 20px; border-radius: 15px; text-align: center; color: white; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
 @st.cache_data
-def get_data():
+def load_data():
     df = pd.read_csv('datos_domotia.csv')
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     return df
 
-df_full = get_data()
+df_full = load_data()
 
-# Sidebar - Capa de Control
-st.sidebar.header("🕹️ Panel de Control")
-if 'sim_running' not in st.session_state:
-    st.session_state.sim_running = False
+# Título con estilo de Tablero de Control
+st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🏠 Centro de Control Residencial</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #64748B;'>Monitoreo en Tiempo Real - Plan Sonora / CODESO</p>", unsafe_allow_html=True)
 
-start = st.sidebar.button("▶️ Iniciar Simulación")
-stop = st.sidebar.button("⏹️ Detener")
+# Espacios dinámicos
+kpi_zone = st.empty()
+alert_zone = st.empty()
+chart_zone = st.empty()
 
-if start: st.session_state.sim_running = True
-if stop: st.session_state.sim_running = False
-
-st.sidebar.divider()
-st.sidebar.caption("Proyecto: Monitoreo de Recursos Sostenibles\nCODESO - Sonora")
-
-# Contenedores dinámicos
-st.title("🏠 Sistema Inteligente de Monitoreo Residencial")
-kpis = st.empty()
-alerts = st.empty()
-charts = st.empty()
-
-# Bucle de Simulación (0.5s = 30min reales)
-if st.session_state.sim_running:
-    # Empezamos desde un punto aleatorio o el inicio
+# Botón de inicio en el sidebar
+if st.sidebar.button("▶️ Iniciar HMI"):
     for i in range(1, len(df_full)):
-        if not st.session_state.sim_running:
-            break
-            
         actual = df_full.iloc[i]
         anterior = df_full.iloc[i-1]
-        ventana = df_full.iloc[max(0, i-48):i] # Últimas 24 horas (48 bloques de 30min)
+        # Ventana de las últimas 12 horas para que la gráfica no se sature
+        ventana = df_full.iloc[max(0, i-24):i]
 
-        # 1. Métricas (Diagnóstico Inmediato)
-        with kpis.container():
+        # --- SECCIÓN DE MÉTRICAS (KPIs) ---
+        with kpi_zone.container():
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Agua (L) 💧", f"{actual['consumo_agua']:.1f}", 
-                      f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f}", delta_color="inverse")
-            c2.metric("Energía (kWh) ⚡", f"{actual['consumo_electrico']:.3f}", 
-                      f"{actual['consumo_electrico'] - anterior['consumo_electrico']:.3f}", delta_color="inverse")
-            c3.metric("Temp. Int 🌡️", f"{actual['temperatura_int']:.1f} °C")
-            c4.metric("Gas 💨", f"{actual['gas_nivel'] if pd.notnull(actual['gas_nivel']) else 'OK'}")
+            # Aplicando Semiótica del Color de tu documento
+            c1.metric("FLUJO AGUA 💧", f"{actual['consumo_agua']:.1f} L", f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f} L", delta_color="inverse")
+            c2.metric("ENERGÍA ⚡", f"{actual['consumo_electrico']:.3f} kWh", f"{actual['consumo_electrico'] - anterior['consumo_electrico']:.3f} kWh", delta_color="inverse")
+            c3.metric("GAS LP 🔥", f"{actual['gas_nivel'] if pd.notnull(actual['gas_nivel']) else 98}%")
+            c4.metric("CONFORT TÉRMICO 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
-        # 2. Alertas (Semántica de Alerta - Rojo)
-        with alerts.container():
+        # --- SISTEMA DE ALERTAS ESPECÍFICAS (¿Qué pasó?) ---
+        with alert_zone.container():
             if actual['anomalia']:
-                st.error(f"🚨 ALERTA: {actual['tipo_anomalia']} detectada a las {actual['timestamp'].strftime('%H:%M')}")
+                tipo = str(actual['tipo_anomalia']).lower()
+                # Lógica para identificar el tipo de falla
+                if 'agua' in tipo or 'fuga' in tipo:
+                    st.error(f"⚠️ **FALLA DETECTADA:** Posible fuga de AGUA. Revisa las tuberías en {actual['timestamp'].strftime('%H:%M')}.")
+                elif 'gas' in tipo:
+                    st.warning(f"🚨 **PELIGRO:** Concentración de GAS detectada. Ventila el área inmediatamente.")
+                elif 'voltaje' in tipo or 'eléctrico' in tipo:
+                    st.info(f"⚡ **AVISO:** Pico de consumo ELÉCTRICO detectado.")
+                else:
+                    st.error(f"❗ **ANOMALÍA DESCONOCIDA:** {actual['tipo_anomalia']}")
+            else:
+                st.success("✅ Todos los sistemas operando con normalidad.")
 
-        # 3. Visualización (Integridad Gráfica)
-        with charts.container():
-            col_izq, col_der = st.columns(2)
-            with col_izq:
-                st.write("**Flujo de Agua (Histórico)**")
-                st.area_chart(ventana.set_index('timestamp')['consumo_agua'], color="#0077B6")
-            with col_der:
-                st.write("**Carga Eléctrica (Histórico)**")
-                st.line_chart(ventana.set_index('timestamp')['consumo_electrico'], color="#FFB703")
-        
-        time.sleep(0.5)
-else:
-    st.info("Presiona 'Iniciar Simulación' en el panel izquierdo para comenzar la visualización en tiempo real.")
+        # --- GRÁFICAS DE ALTA FIDELIDAD ---
+        with chart_zone.container():
+            col_a, col_b = st.columns(2)
