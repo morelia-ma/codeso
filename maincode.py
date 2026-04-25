@@ -6,11 +6,12 @@ import os
 # 1. Configuración de pantalla
 st.set_page_config(page_title="CODESO Smart Home HMI", layout="wide")
 
-# 2. Estilo CSS "Premium" (Jerarquía Visual de tu doc)
+# 2. Estilo CSS "Premium"
 st.markdown("""
     <style>
     .stMetric { border-radius: 15px; background-color: #ffffff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 5px solid #0077B6; }
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; }
+    .fuga-log { padding: 10px; border-radius: 5px; background-color: #FEE2E2; border-left: 5px solid #DC2626; margin-bottom: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -26,11 +27,13 @@ def load_data():
 
 df = load_data()
 
-# 4. Gestión del estado (Pausa, Índice, Corriendo)
+# 4. Gestión del estado (Pausa, Índice, Historial de Fugas)
 if 'indice' not in st.session_state:
     st.session_state.indice = 1
 if 'corriendo' not in st.session_state:
     st.session_state.corriendo = False
+if 'historial_fugas' not in st.session_state:
+    st.session_state.historial_fugas = []
 
 # --- SIDEBAR (Panel de Control HMI) ---
 st.sidebar.title("🕹️ Panel de Control")
@@ -44,10 +47,16 @@ if col_pause.button("⏸️ Pausar"):
 if st.sidebar.button("🔄 Reiniciar"):
     st.session_state.corriendo = False
     st.session_state.indice = 1
+    st.session_state.historial_fugas = []
     st.rerun()
 
 st.sidebar.divider()
-st.sidebar.write(f"Progreso: {st.session_state.indice} / {len(df) if df is not None else 0}")
+st.sidebar.subheader("📋 Bitácora de Fugas")
+if st.session_state.historial_fugas:
+    for evento in reversed(st.session_state.historial_fugas):
+        st.sidebar.markdown(f"**{evento['fecha']}** \n⚠️ {evento['tipo']}", unsafe_allow_html=True)
+else:
+    st.sidebar.write("No hay eventos registrados.")
 
 # --- CUERPO PRINCIPAL ---
 st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🏠 Centro de Control Residencial</h1>", unsafe_allow_html=True)
@@ -60,45 +69,15 @@ if df is not None:
 
     # KPIs Principales
     c1, c2, c3, c4 = st.columns(4)
+    c1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}", f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f} L", delta_color="inverse")
+    c2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}", f"{actual['consumo_electrico'] - anterior['consumo_electrico']:.3f} kWh", delta_color="inverse")
     
-    # 💧 Agua
-    c1.metric("AGUA (L)", f"{actual['consumo_agua']:.1f}", 
-              f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f}", delta_color="inverse")
+    # Gas (Mostrando columna gas_nivel si existe)
+    nivel_gas = actual['gas_nivel'] if 'gas_nivel' in actual and pd.notnull(actual['gas_nivel']) else 95.0
+    c3.metric("NIVEL GAS % 🔥", f"{nivel_gas}%", "-0.1%")
     
-    # ⚡ Energía
-    c2.metric("ENERGÍA (kWh)", f"{actual['consumo_electrico']:.3f}", 
-              f"{actual['consumo_electrico'] - anterior['consumo_electrico']:.3f}", delta_color="inverse")
-    
-    # 🔥 GAS (Corregido: Mostrando porcentaje)
-    # Si el valor es nulo en el CSV, mostramos 95% como base de simulación
-    valor_gas = actual['gas_level'] if 'gas_level' in actual and pd.notnull(actual['gas_level']) else 95.2
-    c3.metric("NIVEL GAS %", f"{valor_gas}%", "-0.1%")
-    
-    # 🌡️ Temperatura
-    c4.metric("TEMP. INT", f"{actual['temperatura_int']:.1f} °C")
+    c4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
-    # ALERTAS INTELIGENTES (Semántica de Alerta)
+    # ALERTAS Y REGISTRO EN BITÁCORA
     if str(actual.get('anomalia', '')).lower() == 'true':
-        tipo = str(actual.get('tipo_anomalia', 'DESCONOCIDA')).upper()
-        st.error(f"🚨 **ANOMALÍA DETECTADA:** {tipo}")
-    else:
-        st.success("✅ Sistemas bajo control. Consumo eficiente.")
-
-    # Gráficas
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.area_chart(ventana['consumo_agua'], color="#0077B6")
-    with col_b:
-        st.line_chart(ventana['consumo_electrico'], color="#FFB703")
-
-    # Lógica de Pausa y Avance
-    if st.session_state.corriendo:
-        if st.session_state.indice < len(df) - 1:
-            st.session_state.indice += 1
-            time.sleep(0.5)
-            st.rerun()
-        else:
-            st.session_state.corriendo = False
-            st.success("Simulación terminada.")
-else:
-    st.error("Archivo 'datos_domotia.csv' no detectado en el repositorio.")
+        tipo_
