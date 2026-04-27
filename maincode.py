@@ -21,7 +21,7 @@ st.markdown("""
 # 3. Carga de datos
 @st.cache_data
 def load_data():
-    file_name = 'datos_domotia.csv'
+    file_name = 'datos_domotia_final.csv'
     if os.path.exists(file_name):
         df = pd.read_csv(file_name)
         df.columns = df.columns.str.strip()
