@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd  # <-- Corregido aquí
+import pandas as pd
 import time
 import os
 from datetime import timedelta
@@ -15,6 +15,7 @@ st.markdown("""
     .falla-agua { color: #0077B6; font-weight: bold; }
     .falla-luz { color: #E67E22; font-weight: bold; }
     .falla-gas { color: #E74C3C; font-weight: bold; }
+    .info-sensor { font-size: 0.8rem; color: #666; font-style: italic; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -24,7 +25,11 @@ def load_all_data():
     df_gen = pd.read_csv('datos_domotia_final.csv')
     df_gen.columns = df_gen.columns.str.strip()
     df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp'])
+    
+    # Gas: Identificamos dónde hay silencios antes de rellenar
+    df_gen['gas_en_silencio'] = df_gen['gas_nivel'].isna()
     df_gen['gas_nivel'] = df_gen['gas_nivel'].ffill().fillna(99.9)
+    
     try:
         df_al = pd.read_csv('alertas_historico.csv')
         df_al.columns = df_al.columns.str.strip()
@@ -43,7 +48,7 @@ if 'vista_actual' not in st.session_state: st.session_state.vista_actual = "prin
 
 t_actual = df.iloc[st.session_state.indice]['timestamp']
 
-# --- SIDEBAR ---
+# --- SIDEBAR (Panel de Control) ---
 st.sidebar.title("🕹️ Panel de Control")
 c1, c2 = st.sidebar.columns(2)
 if c1.button("▶️ Iniciar"): st.session_state.corriendo = True
@@ -52,7 +57,7 @@ if st.sidebar.button("🔄 Reiniciar"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- BITÁCORA LATERAL (Filtro por día y tipo) ---
+# --- BITÁCORA LATERAL (Lógica Estricta de 1 por día) ---
 st.sidebar.divider()
 st.sidebar.subheader("🔔 Alertas Activas (24h)")
 un_dia_atras = t_actual - timedelta(days=1)
@@ -63,45 +68,52 @@ if not alertas_24h.empty:
     for _, row in alertas_24h.iloc[::-1].iterrows():
         tipo_r = str(row.get('tipo_anomalia_real', '')).upper()
         msj = str(row.get('mensaje', '')).upper()
-        sens = str(row.get('sensor', '')).upper()
         
-        if any(x in tipo_r or x in msj or x in sens for x in ["AGUA", "FUGA_AGUA"]):
-            f_tipo, clase = "AGUA", "falla-agua"
-        elif any(x in tipo_r or x in msj or x in sens for x in ["GAS", "FLAM", "FLUJO"]):
-            f_tipo, clase = "GAS", "falla-gas"
-        else:
-            f_tipo, clase = "LUZ", "falla-luz"
+        if "AGUA" in tipo_r or "AGUA" in msj: f_tipo, clase = "AGUA", "falla-agua"
+        elif "GAS" in tipo_r or "GAS" in msj: f_tipo, clase = "GAS", "falla-gas"
+        else: f_tipo, clase = "LUZ", "falla-luz"
 
-        # Identificador por tipo y fecha (ej: GAS_2025-01-01)
         id_unico = f"{f_tipo}_{row['timestamp'].date()}"
-        
         if id_unico not in ya_mostrados_hoy:
-            st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%d %b, %H:%M')}</small><br><span class='{clase}'>⚠️ FALLO DE {f_tipo}</span></div>", unsafe_allow_html=True)
+            st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%H:%M')}</small> - <span class='{clase}'>⚠️ {f_tipo}</span></div>", unsafe_allow_html=True)
             ya_mostrados_hoy.add(id_unico)
 
 # --- CUERPO PRINCIPAL ---
 st.title("🏠 Dashboard CODESO Smart Home")
-
 i = st.session_state.indice
 actual = df.iloc[i]
 anterior = df.iloc[i-1]
 
-# Lógica Gas
+# Lógica Gas e Inferencia de Silencio
 nivel_real = actual['gas_nivel'] - st.session_state.gas_rellenado
 if nivel_real <= 8.0:
     st.session_state.gas_rellenado = actual['gas_nivel'] - 100.0
     nivel_real = 100.0
 
-# VISTAS
 if st.session_state.vista_actual == "principal":
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}", f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f}")
-    k2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}")
+    
+    # ⚡ DETECTOR DE PICOS ELÉCTRICOS (Día 10 y similares)
+    consumo_e = actual['consumo_electrico']
+    delta_e = consumo_e - anterior['consumo_electrico']
+    k2.metric("ENERGÍA (kWh) ⚡", f"{consumo_e:.3f}", f"{delta_e:.3f}")
+    
     k3.metric("GAS % 🔥", f"{nivel_real:.1f}%")
     k4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
-    if nivel_real <= 10.0: st.warning(f"⚠️ BAJO NIVEL DE GAS: {nivel_real:.1f}%")
+    # --- MENSAJES DE ESTADO INTELIGENTES ---
+    # 1. Alerta de Pico Eléctrico Automática
+    if consumo_e > 4.0: # Umbral para detectar el pico del día 10
+        st.error(f"🚨 **ALERTA DE PICO ELÉCTRICO:** Consumo crítico detectado ({consumo_e} kWh) a las {actual['timestamp'].strftime('%H:%M')}.")
+
+    # 2. Explicación del Sensor de Gas (Punto 2 de tus errores)
+    if actual['gas_en_silencio']:
+        st.info("📡 **Estado del Sensor de Gas:** Modo de Ahorro Energético. El sensor permanece en silencio por diseño de bajo consumo o probabilidad de canal (75% silencio esperado). No representa una falla.")
     
+    if nivel_real <= 10.0: st.warning(f"⚠️ **BAJO NIVEL DE GAS:** Tanque al {nivel_real:.1f}%.")
+
+    # Gráficas
     st.divider()
     ventana = df.iloc[max(0, i-50):i+1]
     g1, g2 = st.columns(2)
@@ -115,24 +127,23 @@ if st.session_state.vista_actual == "principal":
     if b2.button("📜 Ver Historial de Alarmas", use_container_width=True):
         st.session_state.vista_actual = "alarmas"; st.rerun()
 
+# VISTAS DE HISTORIAL (Sincronizadas)
 elif st.session_state.vista_actual == "datos":
-    st.subheader("🔍 Explorador de Datos (Simulación en tiempo real)")
-    df_visto = df[df['timestamp'] <= t_actual]
-    
+    st.subheader("🔍 Explorador de Datos Históricos")
+    df_v = df[df['timestamp'] <= t_actual]
     c_m, c_d, c_b = st.columns([2, 2, 1])
-    mes_sel = c_m.selectbox("Mes", df_visto['timestamp'].dt.month_name().unique())
-    df_m = df_visto[df_visto['timestamp'].dt.month_name() == mes_sel]
+    mes_sel = c_m.selectbox("Mes", df_v['timestamp'].dt.month_name().unique())
+    df_m = df_v[df_v['timestamp'].dt.month_name() == mes_sel]
     dia_sel = c_d.selectbox("Día", sorted(df_m['timestamp'].dt.day.unique()))
-    
     if c_b.button("⬅️ Volver"): st.session_state.vista_actual = "principal"; st.rerun()
-    st.dataframe(df_m[df_m['timestamp'].dt.day == dia_sel][['timestamp', 'consumo_agua', 'consumo_electrico', 'gas_nivel']], use_container_width=True)
+    st.dataframe(df_m[df_m['timestamp'].dt.day == dia_sel][['timestamp', 'consumo_agua', 'consumo_electrico', 'gas_nivel']])
 
 elif st.session_state.vista_actual == "alarmas":
-    st.subheader("📜 Historial de Incidencias (Hasta hoy)")
+    st.subheader("📜 Historial de Alarmas del Sistema")
     if st.button("⬅️ Volver"): st.session_state.vista_actual = "principal"; st.rerun()
-    st.table(df_alertas[df_alertas['timestamp'] <= t_actual][['timestamp', 'sensor', 'mensaje', 'tipo_anomalia_real']])
+    st.table(df_alertas[df_alertas['timestamp'] <= t_actual][['timestamp', 'mensaje', 'tipo_anomalia_real']])
 
-# Avance
+# Motor
 if st.session_state.corriendo and i < len(df) - 1 and st.session_state.vista_actual == "principal":
     st.session_state.indice += 1
     time.sleep(0.3)
