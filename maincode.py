@@ -37,7 +37,7 @@ def load_all_data():
 
 df, df_alertas = load_all_data()
 
-# 4. Estado de la Sesión (Navegación de Botones)
+# 4. Estado de la Sesión
 if 'indice' not in st.session_state: st.session_state.indice = 1
 if 'corriendo' not in st.session_state: st.session_state.corriendo = False
 if 'gas_rellenado' not in st.session_state: st.session_state.gas_rellenado = 0
@@ -52,27 +52,42 @@ if st.sidebar.button("🔄 Reiniciar"):
     for key in st.session_state.keys(): del st.session_state[key]
     st.rerun()
 
-# Bitácora Izquierda (Alertas 24h)
+# --- LÓGICA DE BITÁCORA SIN REPETIDOS POR DÍA ---
 st.sidebar.divider()
 st.sidebar.subheader("🔔 Alertas Activas (24h)")
 t_simulacion = df.iloc[st.session_state.indice]['timestamp']
 un_dia_atras = t_simulacion - timedelta(days=1)
 
-alertas_activas = df_alertas[(df_alertas['timestamp'] <= t_simulacion) & (df_alertas['timestamp'] >= un_dia_atras)]
+# Filtramos las alertas de las últimas 24 horas
+alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_simulacion) & (df_alertas['timestamp'] >= un_dia_atras)].copy()
 
-if not alertas_activas.empty:
-    for _, row in alertas_activas.iloc[::-1].iterrows():
+if not alertas_24h.empty:
+    # Agregamos una columna de solo fecha para comparar
+    alertas_24h['fecha_solo'] = alertas_24h['timestamp'].dt.date
+    
+    # Creamos una lista para saber qué ya mostramos (Tipo + Fecha)
+    ya_mostrados = set()
+    
+    for _, row in alertas_24h.iloc[::-1].iterrows():
         # Traductor de Fallos para evitar NaNs
         tipo_r = str(row.get('tipo_anomalia_real', '')).upper()
         msj = str(row.get('mensaje', '')).upper()
+        
         if "AGUA" in tipo_r or "AGUA" in msj: final_t, clase = "AGUA", "falla-agua"
         elif "GAS" in tipo_r or "GAS" in msj: final_t, clase = "GAS", "falla-gas"
         else: final_t, clase = "LUZ", "falla-luz"
-        st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp']}</small><br><span class='{clase}'>⚠️ FALLO DE {final_t}</span></div>", unsafe_allow_html=True)
+        
+        # Identificador único por tipo y día
+        ID_FALLA = f"{final_t}_{row['fecha_solo']}"
+        
+        if ID_FALLA not in ya_mostrados:
+            st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%d %b, %H:%M')}</small><br><span class='{clase}'>⚠️ FALLO DE {final_t}</span></div>", unsafe_allow_html=True)
+            ya_mostrados.add(ID_FALLA)
+else:
+    st.sidebar.info("Sistemas estables.")
 
 # --- CUERPO PRINCIPAL ---
 st.title("🏠 Dashboard CODESO Smart Home")
-
 i = st.session_state.indice
 actual = df.iloc[i]
 anterior = df.iloc[i-1]
@@ -83,14 +98,13 @@ if nivel_real <= 8.0:
     st.session_state.gas_rellenado = actual['gas_nivel'] - 100.0
     nivel_real = 100.0
 
-# KPIs y Gráficas (Solo se ven en vista principal)
 if st.session_state.vista_actual == "principal":
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}", f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f}")
     k2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}")
     k3.metric("GAS % 🔥", f"{nivel_real:.1f}%")
     k4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
-
+    
     if nivel_real <= 10.0: st.warning(f"⚠️ BAJO NIVEL DE GAS: {nivel_real:.1f}%")
     
     st.divider()
@@ -99,52 +113,36 @@ if st.session_state.vista_actual == "principal":
     with g1: st.area_chart(ventana.set_index('timestamp')['consumo_agua'], color="#0077B6")
     with g2: st.line_chart(ventana.set_index('timestamp')['consumo_electrico'], color="#FFB703")
 
-# --- SECCIÓN DE BOTONES E HISTORIALES ---
+# --- SECCIÓN DE BOTONES ---
 st.divider()
-
 if st.session_state.vista_actual == "principal":
     b1, b2 = st.columns(2)
     if b1.button("📊 Ver Datos de Consumo Almacenados", use_container_width=True):
-        st.session_state.vista_actual = "datos"
-        st.rerun()
+        st.session_state.vista_actual = "datos"; st.rerun()
     if b2.button("📜 Ver Historial de Alarmas", use_container_width=True):
-        st.session_state.vista_actual = "alarmas"
-        st.rerun()
+        st.session_state.vista_actual = "alarmas"; st.rerun()
 
-# VISTA DE DATOS CON FILTRO DE FECHA
 elif st.session_state.vista_actual == "datos":
     st.subheader("🔍 Explorador de Consumo Histórico")
-    
-    # Selectores de Fecha
     col_mes, col_dia, col_back = st.columns([2, 2, 1])
     
     meses_disp = df['timestamp'].dt.month_name().unique()
     mes_sel = col_mes.selectbox("Selecciona el Mes", meses_disp)
-    
     df_mes = df[df['timestamp'].dt.month_name() == mes_sel]
-    dias_disp = df_mes['timestamp'].dt.day.unique()
-    dia_sel = col_dia.selectbox("Selecciona el Día", sorted(dias_disp))
+    dia_sel = col_dia.selectbox("Selecciona el Día", sorted(df_mes['timestamp'].dt.day.unique()))
     
-    if col_back.button("⬅️ Volver", use_container_width=True):
-        st.session_state.vista_actual = "principal"
-        st.rerun()
+    if col_back.button("⬅️ Volver"): st.session_state.vista_actual = "principal"; st.rerun()
     
-    # Filtrado final
-    resultado = df_mes[df_mes['timestamp'].dt.day == dia_sel]
-    st.dataframe(resultado[['timestamp', 'consumo_agua', 'consumo_electrico', 'gas_nivel', 'temperatura_int']], use_container_width=True)
+    st.dataframe(df_mes[df_mes['timestamp'].dt.day == dia_sel][['timestamp', 'consumo_agua', 'consumo_electrico', 'gas_nivel', 'temperatura_int']], use_container_width=True)
 
-# VISTA DE HISTORIAL DE ALARMAS
 elif st.session_state.vista_actual == "alarmas":
     st.subheader("📜 Historial Completo de Incidencias")
-    
-    if st.button("⬅️ Volver a Panel Principal"):
-        st.session_state.vista_actual = "principal"
-        st.rerun()
+    if st.button("⬅️ Volver"): st.session_state.vista_actual = "principal"; st.rerun()
     
     hist_total = df_alertas[df_alertas['timestamp'] <= t_simulacion].copy()
     st.table(hist_total[['timestamp', 'sensor', 'mensaje', 'tipo_anomalia_real']])
 
-# Motor de Simulación
+# Motor
 if st.session_state.corriendo and i < len(df) - 1 and st.session_state.vista_actual == "principal":
     st.session_state.indice += 1
     time.sleep(0.3)
