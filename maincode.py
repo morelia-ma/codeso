@@ -3,7 +3,7 @@ import pandas as pd
 import time
 from datetime import timedelta
 
-# 1. Configuración
+# 1. Configuración de página
 st.set_page_config(page_title="HMI Domótica CODESO", layout="wide")
 
 # 2. Estilos CSS
@@ -17,14 +17,15 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Carga y Limpieza
+# 3. Carga de Datos (Sincronizada con tus nuevos archivos)
 @st.cache_data
 def load_all_data():
     df_gen = pd.read_csv('datos_domotia_final.csv')
     df_gen.columns = df_gen.columns.str.strip()
     df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp'])
-    # Detectar silencios de gas (NaNs originales)
-    df_gen['gas_es_silencio'] = df_gen['gas_nivel'].isna()
+    
+    # Identificar silencios de gas (NaN) antes de rellenar para el diagnóstico
+    df_gen['gas_en_silencio'] = df_gen['gas_nivel'].isna()
     df_gen['gas_nivel'] = df_gen['gas_nivel'].ffill().fillna(99.9)
     
     try:
@@ -32,7 +33,7 @@ def load_all_data():
         df_al.columns = df_al.columns.str.strip()
         df_al['timestamp'] = pd.to_datetime(df_al['timestamp'])
     except:
-        df_al = pd.DataFrame(columns=['timestamp', 'sensor', 'mensaje', 'tipo_anomalia_real'])
+        df_al = pd.DataFrame(columns=['timestamp', 'mensaje', 'tipo_anomalia_real'])
     return df_gen, df_al
 
 df, df_alertas = load_all_data()
@@ -45,122 +46,109 @@ if 'vista_actual' not in st.session_state: st.session_state.vista_actual = "prin
 
 t_actual = df.iloc[st.session_state.indice]['timestamp']
 
-# --- SIDEBAR ---
+# --- SIDEBAR (Panel de Control Unificado) ---
 st.sidebar.title("🕹️ Panel de Control")
-c1, c2 = st.sidebar.columns(2)
-if c1.button("▶️ Iniciar"): st.session_state.corriendo = True
-if c2.button("⏸️ Pausar"): st.session_state.corriendo = False
-if st.sidebar.button("🔄 Reiniciar"):
+if st.sidebar.button("▶️ Iniciar / ⏸️ Pausar", key="play_pause"):
+    st.session_state.corriendo = not st.session_state.corriendo
+
+if st.sidebar.button("🔄 Reiniciar Simulación", key="reset"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- BITÁCORA IZQUIERDA (Anti-repetición Estricta) ---
+# --- BITÁCORA LATERAL (Basada en tus nuevos datos limpios) ---
 st.sidebar.divider()
-st.sidebar.subheader("🔔 Alertas Activas (24h)")
+st.sidebar.subheader("🔔 Alertas Recientes (24h)")
 un_dia_atras = t_actual - timedelta(days=1)
+alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= un_dia_atras)].copy()
 
-# Filtramos alertas del pasado cercano
-alertas_recientes = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= un_dia_atras)].copy()
-
-if not alertas_recientes.empty:
-    # Agregamos fecha para agrupar
-    alertas_recientes['fecha_dia'] = alertas_recientes['timestamp'].dt.date
-    
-    # Clasificación y limpieza
-    items_a_mostrar = []
-    vistos = set() # Para evitar duplicados de (Tipo + Día)
-
-    for _, row in alertas_recientes.iloc[::-1].iterrows():
-        tipo_r = str(row.get('tipo_anomalia_real', '')).upper()
+if not alertas_24h.empty:
+    for _, row in alertas_24h.iloc[::-1].iterrows():
+        tipo = str(row.get('tipo_anomalia_real', '')).lower()
         msj = str(row.get('mensaje', '')).upper()
         
-        # Determinar Categoría Real
-        if "GAS" in tipo_r or "GAS" in msj:
-            # Si el mensaje dice fuga es fuga, si no, es el comportamiento esperado del sensor
-            f_label = "FUGA DE GAS" if "FUGA" in msj else "GAS (AHORRO ENERGÍA/PROB.)"
+        # Lógica de especificación solicitada
+        if "gas" in tipo or "GAS" in msj:
+            label = "FUGA DE GAS" if "FUGA" in msj else "GAS (AHORRO ENERGÍA)"
             clase = "falla-gas"
-        elif "AGUA" in tipo_r or "AGUA" in msj:
-            f_label, clase = "FUGA DE AGUA", "falla-agua"
+        elif "agua" in tipo or "AGUA" in msj:
+            label, clase = "FALLA DE AGUA", "falla-agua"
         else:
-            f_label, clase = "PICO ELÉCTRICO", "falla-luz"
-
-        # Solo guardamos si no hemos visto este tipo HOY
-        key = f"{f_label}_{row['fecha_dia']}"
-        if key not in vistos:
-            items_a_mostrar.append({'ts': row['timestamp'], 'label': f_label, 'clase': clase})
-            vistos.add(key)
-
-    for item in items_a_mostrar:
+            label, clase = "PICO ELÉCTRICO", "falla-luz"
+            
         st.sidebar.markdown(f"""
             <div class='bitacora-item'>
-                <small>{item['ts'].strftime('%H:%M')}</small> - <span class='{item['clase']}'>⚠️ {item['label']}</span>
+                <small>{row['timestamp'].strftime('%H:%M')}</small> - <span class='{clase}'>⚠️ {label}</span>
             </div>
         """, unsafe_allow_html=True)
 
-# --- CUERPO PRINCIPAL ---
-st.title("🏠 Dashboard CODESO Smart Home")
-idx = st.session_state.indice
-actual = df.iloc[idx]
-anterior = df.iloc[idx-1]
+# --- CONTENEDOR DE VISTAS (Evita duplicidad de elementos) ---
+view_space = st.empty()
 
-# Lógica Gas
-nivel_gas_vis = actual['gas_nivel'] - st.session_state.gas_rellenado
-if nivel_gas_vis <= 8.0:
-    st.session_state.gas_rellenado = actual['gas_nivel'] - 100.0
-    nivel_gas_vis = 100.0
-
-if st.session_state.vista_actual == "principal":
-    # KPIs
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}")
+with view_space.container():
+    idx = st.session_state.indice
+    actual = df.iloc[idx]
     
-    # Detector de Pico Eléctrico para el KPI
-    val_e = actual['consumo_electrico']
-    k2.metric("ENERGÍA (kWh) ⚡", f"{val_e:.3f}")
-    if val_e > 4.0: st.error(f"🚨 PICO ELÉCTRICO DETECTADO: {val_e} kWh")
-    
-    k3.metric("GAS % 🔥", f"{nivel_gas_vis:.1f}%")
-    k4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
+    if st.session_state.vista_actual == "principal":
+        st.title("🏠 Dashboard CODESO Smart Home")
+        
+        # KPIs
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}")
+        k2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}")
+        k3.metric("GAS % 🔥", f"{actual['gas_nivel']:.1f}%")
+        k4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
-    st.divider()
-    
-    # Gráficas (Protegidas en columnas)
-    ventana = df.iloc[max(0, idx-50):idx+1]
-    col_g1, col_g2 = st.columns(2)
-    with col_g1: st.area_chart(ventana.set_index('timestamp')['consumo_agua'], color="#0077B6")
-    with col_g2: st.line_chart(ventana.set_index('timestamp')['consumo_electrico'], color="#FFB703")
+        # Alertas de tiempo real
+        if actual['consumo_electrico'] > 4.0:
+            st.error(f"🚨 PICO ELÉCTRICO DETECTADO: {actual['consumo_electrico']} kWh")
+        
+        st.divider()
+        # Gráficas
+        ventana = df.iloc[max(0, idx-50):idx+1]
+        g1, g2 = st.columns(2)
+        with g1: st.area_chart(ventana.set_index('timestamp')['consumo_agua'], color="#0077B6")
+        with g2: st.line_chart(ventana.set_index('timestamp')['consumo_electrico'], color="#FFB703")
 
-    st.divider()
-    
-    # Botones de Navegación
-    bn1, bn2 = st.columns(2)
-    if bn1.button("📊 Ver Datos de Consumo Almacenados", use_container_width=True):
-        st.session_state.vista_actual = "datos"
-        st.rerun()
-    if bn2.button("📜 Ver Historial de Alarmas", use_container_width=True):
-        st.session_state.vista_actual = "alarmas"
-        st.rerun()
+        st.divider()
+        # Navegación con Keys Únicas
+        col_b1, col_b2 = st.columns(2)
+        if col_b1.button("📊 Ver Datos de Consumo Almacenados", key="nav_datos", use_container_width=True):
+            st.session_state.vista_actual = "datos"
+            st.rerun()
+        if col_b2.button("📜 Ver Historial de Alarmas", key="nav_alarmas", use_container_width=True):
+            st.session_state.vista_actual = "alarmas"
+            st.rerun()
 
-elif st.session_state.vista_actual == "datos":
-    st.subheader("🔍 Explorador de Consumo")
-    if st.button("⬅️ Volver"):
-        st.session_state.vista_actual = "principal"
-        st.rerun()
-    
-    df_v = df[df['timestamp'] <= t_actual]
-    mes_sel = st.selectbox("Seleccionar Mes", df_v['timestamp'].dt.month_name().unique())
-    df_m = df_v[df_v['timestamp'].dt.month_name() == mes_sel]
-    dia_sel = st.selectbox("Seleccionar Día", sorted(df_m['timestamp'].dt.day.unique()))
-    st.dataframe(df_m[df_m['timestamp'].dt.day == dia_sel][['timestamp', 'consumo_agua', 'consumo_electrico', 'gas_nivel']], use_container_width=True)
+    elif st.session_state.vista_actual == "datos":
+        st.subheader("🔍 Explorador de Datos (Fallas en Rojo)")
+        if st.button("⬅️ Volver al Panel", key="back_to_main"):
+            st.session_state.vista_actual = "principal"
+            st.rerun()
+        
+        # Filtro de tiempo real
+        df_visto = df[df['timestamp'] <= t_actual].copy()
+        meses = df_visto['timestamp'].dt.month_name().unique()
+        sel_mes = st.selectbox("Mes", meses)
+        
+        df_mes = df_visto[df_visto['timestamp'].dt.month_name() == sel_mes]
+        sel_dia = st.selectbox("Día", sorted(df_mes['timestamp'].dt.day.unique()))
+        
+        df_final = df_mes[df_mes['timestamp'].dt.day == sel_dia].copy()
 
-elif st.session_state.vista_actual == "alarmas":
-    st.subheader("📜 Historial Completo")
-    if st.button("⬅️ Volver"):
-        st.session_state.vista_actual = "principal"
-        st.rerun()
-    st.table(df_alertas[df_alertas['timestamp'] <= t_actual][['timestamp', 'mensaje', 'tipo_anomalia_real']])
+        # Estilo para pintar de rojo si anomalia == True
+        def style_anomalia(row):
+            return ['background-color: #ffcccc' if row.anomalia == True else '' for _ in row]
 
-# Motor
+        st.dataframe(df_final.style.apply(style_anomalia, axis=1), use_container_width=True)
+
+    elif st.session_state.vista_actual == "alarmas":
+        st.subheader("📜 Historial de Alarmas Registradas")
+        if st.button("⬅️ Volver al Panel", key="back_from_alarmas"):
+            st.session_state.vista_actual = "principal"
+            st.rerun()
+        st.table(df_alertas[df_alertas['timestamp'] <= t_actual])
+
+# Motor de simulación
 if st.session_state.corriendo and idx < len(df) - 1 and st.session_state.vista_actual == "principal":
     st.session_state.indice += 1
     time.sleep(0.3)
