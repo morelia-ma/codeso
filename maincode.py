@@ -4,9 +4,9 @@ import time
 import os
 
 # 1. Configuración de pantalla
-st.set_page_config(page_title="CODESO Smart Home HMI", layout="wide")
+st.set_page_config(page_title="HMI Domótica CODESO", layout="wide")
 
-# 2. Estilos CSS (Semiótica y Limpieza de Interfaz)
+# 2. Estilos CSS (Semiótica y Interfaz limpia)
 st.markdown("""
     <style>
     .stMetric { border-radius: 15px; background-color: #ffffff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 5px solid #0077B6; }
@@ -14,117 +14,106 @@ st.markdown("""
     .falla-agua { color: #0077B6; font-weight: bold; }
     .falla-luz { color: #E67E22; font-weight: bold; }
     .falla-gas { color: #E74C3C; font-weight: bold; }
-    .progreso-text { font-size: 1rem; font-weight: bold; color: #1E3A8A; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Carga de datos
+# 3. Carga de datos unificada
 @st.cache_data
-def load_data():
-    file_name = 'datos_domotia_final.csv'
-    if os.path.exists(file_name):
-        df = pd.read_csv(file_name)
-        df.columns = df.columns.str.strip()
-        return df
-    return None
+def load_all_data():
+    # Carga de datos generales
+    df_gen = pd.read_csv('datos_domotia_final.csv')
+    df_gen.columns = df_gen.columns.str.strip()
+    df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp'])
+    
+    # REGLA DEL GAS: Rellenar huecos para que el porcentaje baje sin saltar
+    if 'gas_nivel' in df_gen.columns:
+        df_gen['gas_nivel'] = df_gen['gas_nivel'].ffill().fillna(99.9) # Empieza en 99.9 si el primer dato es nulo
+    
+    # Carga de alertas históricas
+    try:
+        df_al = pd.read_csv('alertas_historico.csv')
+        df_al.columns = df_al.columns.str.strip()
+        df_al['timestamp'] = pd.to_datetime(df_al['timestamp'])
+    except Exception:
+        df_al = None
+        
+    return df_gen, df_al
 
-df = load_data()
+df, df_alertas = load_all_data()
 
 # 4. Estado de la sesión
 if 'indice' not in st.session_state:
     st.session_state.indice = 1
 if 'corriendo' not in st.session_state:
     st.session_state.corriendo = False
-if 'historial_fugas' not in st.session_state:
-    st.session_state.historial_fugas = []
 
-# --- SIDEBAR (Controles y Bitácora) ---
+# --- SIDEBAR (Panel de Control y Monitor para TI) ---
 st.sidebar.title("🕹️ Panel de Control")
-
-col_play, col_pause = st.sidebar.columns(2)
-if col_play.button("▶️ Iniciar"): st.session_state.corriendo = True
-if col_pause.button("⏸️ Pausar"): st.session_state.corriendo = False
+c1, c2 = st.sidebar.columns(2)
+if c1.button("▶️ Iniciar"): st.session_state.corriendo = True
+if c2.button("⏸️ Pausar"): st.session_state.corriendo = False
 
 if st.sidebar.button("🔄 Reiniciar"):
     st.session_state.corriendo = False
     st.session_state.indice = 1
-    st.session_state.historial_fugas = []
     st.rerun()
 
-# --- CONTADOR DE PROGRESO (Lo que pediste para saber cuánto falta) ---
-if df is not None:
-    total_datos = len(df)
-    progreso = st.session_state.indice
-    porcentaje = (progreso / total_datos)
-    
-    st.sidebar.divider()
-    st.sidebar.markdown(f"<div class='progreso-text'>Progreso: {progreso} / {total_datos}</div>", unsafe_allow_html=True)
-    st.sidebar.progress(porcentaje)
-    st.sidebar.caption(f"Faltan {total_datos - progreso} registros para terminar.")
-
+# Monitor de progreso (Para que sepas cuánto falta)
 st.sidebar.divider()
-st.sidebar.subheader("📋 Historial de Fallos")
-if st.session_state.historial_fugas:
-    for ev in reversed(st.session_state.historial_fugas):
-        clase = "falla-agua" if ev['tipo'] == "AGUA" else "falla-luz" if ev['tipo'] == "LUZ" else "falla-gas"
-        st.sidebar.markdown(f"<div class='bitacora-item'><small>{ev['fecha']}</small><br><span class='{clase}'>⚠️ FALLO DE {ev['tipo']}</span></div>", unsafe_allow_html=True)
+total_f = len(df)
+curr_f = st.session_state.indice
+st.sidebar.write(f"📊 **Dato:** {curr_f} / {total_f}")
+st.sidebar.progress(curr_f / total_f)
+
+# Bitácora Dinámica (Lee de alertas_historico conforme avanza el tiempo)
+st.sidebar.divider()
+st.sidebar.subheader("📋 Bitácora de Alarmas")
+if df_alertas is not None:
+    t_actual = df.iloc[curr_f]['timestamp']
+    # Filtrar alertas que ya ocurrieron hasta este momento de la simulación
+    pasadas = df_alertas[df_alertas['timestamp'] <= t_actual].tail(5)
+    for _, row in pasadas.iloc[::-1].iterrows():
+        tipo = str(row.get('tipo_anomalia_real', 'Alerta')).upper()
+        clase = "falla-agua" if "AGUA" in tipo else "falla-luz" if "ELEC" in tipo else "falla-gas"
+        st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp']}</small><br><span class='{clase}'>⚠️ {tipo}</span></div>", unsafe_allow_html=True)
 
 # --- CUERPO PRINCIPAL ---
-st.title("🏠 Centro de Control Residencial")
+st.title("🏠 HMI Domótica Inteligente")
 
 if df is not None:
     i = st.session_state.indice
     actual = df.iloc[i]
     anterior = df.iloc[i-1]
-    ventana = df.iloc[max(0, i-30):i+1]
+    ventana = df.iloc[max(0, i-40):i+1] # Ventana de tiempo para gráficas
 
     # KPIs Principales
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}", f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f}", delta_color="inverse")
-    c2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}", f"{actual['consumo_electrico'] - anterior['consumo_electrico']:.3f}", delta_color="inverse")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}", f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f}", delta_color="inverse")
+    k2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}")
     
-    # Gas (Mostrando columna real)
-    gas_val = actual['gas_nivel'] if 'gas_nivel' in actual and pd.notnull(actual['gas_nivel']) else 94.5
-    c3.metric("NIVEL GAS % 🔥", f"{gas_val}%")
-    c4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
-
-    # Lógica de Clasificación de Fallos (Mejorada para no decir "Sistema")
-    es_anomalia = str(actual.get('anomalia', '')).lower() == 'true'
+    # 🔥 GAS (Ya no se regresa a 94 por el ffill() de arriba)
+    gas_val = actual['gas_nivel']
+    k3.metric("NIVEL GAS %", f"{gas_val:.2f}%", "-0.01%")
     
-    if es_anomalia:
-        txt = str(actual.get('tipo_anomalia', '')).upper()
-        fecha = str(actual.get('timestamp', 'S/F')).replace('T', ' ')[:16]
-        
-        # Clasificación por palabras clave
-        if any(p in txt for p in ["AGUA", "FUGA", "HIDRO", "LIQUIDO"]):
-            tipo_real = "AGUA"
-        elif any(p in txt for p in ["GAS", "FLUJO", "LP", "METANO"]):
-            tipo_real = "GAS"
-        else:
-            tipo_real = "LUZ" # Default para cualquier otra anomalía eléctrica/térmica
+    k4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
-        if not any(entry['idx'] == i for entry in st.session_state.historial_fugas):
-            st.session_state.historial_fugas.append({"fecha": fecha, "tipo": tipo_real, "idx": i})
-        
-        st.error(f"🚨 **ALERTA DE {tipo_real}:** Detectada el {fecha}")
+    # Alertas en tiempo real (Sincronizadas con la columna anomalia de datos_final)
+    if str(actual['anomalia']).lower() == 'true':
+        tipo_f = str(actual['tipo_anomalia']).upper()
+        st.error(f"🚨 **ANOMALÍA EN VIVO:** {tipo_f} detectada en {actual['timestamp']}")
 
-    # GRÁFICAS (UNA SOLA FILA, SIN DUPLICADOS)
+    # Gráficas (UNA SOLA FILA, SIN DUPLICADOS)
     st.divider()
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.subheader("Monitoreo de Agua")
-        st.area_chart(ventana['consumo_agua'], color="#0077B6")
-    with col_b:
-        st.subheader("Monitoreo Eléctrico")
-        st.line_chart(ventana['consumo_electrico'], color="#FFB703")
+    g1, g2 = st.columns(2)
+    with g1:
+        st.subheader("Consumo Hídrico")
+        st.area_chart(ventana.set_index('timestamp')['consumo_agua'], color="#0077B6")
+    with g2:
+        st.subheader("Demanda Eléctrica")
+        st.line_chart(ventana.set_index('timestamp')['consumo_electrico'], color="#FFB703")
 
-    # Motor de Simulación
-    if st.session_state.corriendo:
-        if st.session_state.indice < len(df) - 1:
-            st.session_state.indice += 1
-            time.sleep(0.4)
-            st.rerun()
-        else:
-            st.session_state.corriendo = False
-            st.balloons()
-            st.success("Simulación completada satisfactoriamente.")
+    # Motor de la simulación
+    if st.session_state.corriendo and i < len(df) - 1:
+        st.session_state.indice += 1
+        time.sleep(0.3)
+        st.rerun()
