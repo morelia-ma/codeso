@@ -1,5 +1,5 @@
 import streamlit as st
-import pd as pd
+import pandas as pd  # <-- Corregido aquí
 import time
 import os
 from datetime import timedelta
@@ -43,31 +43,28 @@ if 'vista_actual' not in st.session_state: st.session_state.vista_actual = "prin
 
 t_actual = df.iloc[st.session_state.indice]['timestamp']
 
-# --- SIDEBAR (Panel de Control) ---
+# --- SIDEBAR ---
 st.sidebar.title("🕹️ Panel de Control")
 c1, c2 = st.sidebar.columns(2)
 if c1.button("▶️ Iniciar"): st.session_state.corriendo = True
 if c2.button("⏸️ Pausar"): st.session_state.corriendo = False
 if st.sidebar.button("🔄 Reiniciar"):
-    for key in st.session_state.keys(): del st.session_state[key]
+    for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- BITÁCORA LATERAL (Lógica Anti-Duplicados Estricta) ---
+# --- BITÁCORA LATERAL (Filtro por día y tipo) ---
 st.sidebar.divider()
 st.sidebar.subheader("🔔 Alertas Activas (24h)")
 un_dia_atras = t_actual - timedelta(days=1)
-# Solo alertas que ya pasaron en la simulación y están dentro del rango de 24h
 alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= un_dia_atras)].copy()
 
 if not alertas_24h.empty:
     ya_mostrados_hoy = set()
-    # Invertimos para ver la más reciente primero
     for _, row in alertas_24h.iloc[::-1].iterrows():
         tipo_r = str(row.get('tipo_anomalia_real', '')).upper()
         msj = str(row.get('mensaje', '')).upper()
         sens = str(row.get('sensor', '')).upper()
         
-        # Clasificación unificada
         if any(x in tipo_r or x in msj or x in sens for x in ["AGUA", "FUGA_AGUA"]):
             f_tipo, clase = "AGUA", "falla-agua"
         elif any(x in tipo_r or x in msj or x in sens for x in ["GAS", "FLAM", "FLUJO"]):
@@ -75,19 +72,12 @@ if not alertas_24h.empty:
         else:
             f_tipo, clase = "LUZ", "falla-luz"
 
-        # LLAVE ÚNICA: Evita que el mismo tipo salga dos veces el mismo día
+        # Identificador por tipo y fecha (ej: GAS_2025-01-01)
         id_unico = f"{f_tipo}_{row['timestamp'].date()}"
         
         if id_unico not in ya_mostrados_hoy:
-            st.sidebar.markdown(f"""
-                <div class='bitacora-item'>
-                    <small>{row['timestamp'].strftime('%d %b, %H:%M')}</small><br>
-                    <span class='{clase}'>⚠️ FALLO DE {f_tipo}</span>
-                </div>
-            """, unsafe_allow_html=True)
+            st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%d %b, %H:%M')}</small><br><span class='{clase}'>⚠️ FALLO DE {f_tipo}</span></div>", unsafe_allow_html=True)
             ya_mostrados_hoy.add(id_unico)
-else:
-    st.sidebar.info("Sistemas estables.")
 
 # --- CUERPO PRINCIPAL ---
 st.title("🏠 Dashboard CODESO Smart Home")
@@ -96,12 +86,13 @@ i = st.session_state.indice
 actual = df.iloc[i]
 anterior = df.iloc[i-1]
 
-# Lógica Gas (Relleno al 8%)
+# Lógica Gas
 nivel_real = actual['gas_nivel'] - st.session_state.gas_rellenado
 if nivel_real <= 8.0:
     st.session_state.gas_rellenado = actual['gas_nivel'] - 100.0
     nivel_real = 100.0
 
+# VISTAS
 if st.session_state.vista_actual == "principal":
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}", f"{actual['consumo_agua'] - anterior['consumo_agua']:.1f}")
@@ -111,7 +102,6 @@ if st.session_state.vista_actual == "principal":
 
     if nivel_real <= 10.0: st.warning(f"⚠️ BAJO NIVEL DE GAS: {nivel_real:.1f}%")
     
-    # Gráficas blindadas contra duplicados (Solo en vista principal)
     st.divider()
     ventana = df.iloc[max(0, i-50):i+1]
     g1, g2 = st.columns(2)
@@ -125,33 +115,24 @@ if st.session_state.vista_actual == "principal":
     if b2.button("📜 Ver Historial de Alarmas", use_container_width=True):
         st.session_state.vista_actual = "alarmas"; st.rerun()
 
-# VISTA DE DATOS (Actualizada en tiempo real)
 elif st.session_state.vista_actual == "datos":
-    st.subheader("🔍 Explorador de Datos Almacenados")
+    st.subheader("🔍 Explorador de Datos (Simulación en tiempo real)")
     df_visto = df[df['timestamp'] <= t_actual]
     
-    col_mes, col_dia, col_back = st.columns([2, 2, 1])
-    meses_disp = df_visto['timestamp'].dt.month_name().unique()
-    mes_sel = col_mes.selectbox("Mes", meses_disp)
+    c_m, c_d, c_b = st.columns([2, 2, 1])
+    mes_sel = c_m.selectbox("Mes", df_visto['timestamp'].dt.month_name().unique())
+    df_m = df_visto[df_visto['timestamp'].dt.month_name() == mes_sel]
+    dia_sel = c_d.selectbox("Día", sorted(df_m['timestamp'].dt.day.unique()))
     
-    df_mes = df_visto[df_visto['timestamp'].dt.month_name() == mes_sel]
-    dia_sel = col_dia.selectbox("Día", sorted(df_mes['timestamp'].dt.day.unique()))
-    
-    if col_back.button("⬅️ Volver"):
-        st.session_state.vista_actual = "principal"; st.rerun()
-    
-    st.dataframe(df_mes[df_mes['timestamp'].dt.day == dia_sel][['timestamp', 'consumo_agua', 'consumo_electrico', 'gas_nivel']], use_container_width=True)
+    if c_b.button("⬅️ Volver"): st.session_state.vista_actual = "principal"; st.rerun()
+    st.dataframe(df_m[df_m['timestamp'].dt.day == dia_sel][['timestamp', 'consumo_agua', 'consumo_electrico', 'gas_nivel']], use_container_width=True)
 
-# VISTA DE HISTORIAL DE ALARMAS
 elif st.session_state.vista_actual == "alarmas":
-    st.subheader("📜 Historial de Incidencias")
-    if st.button("⬅️ Volver"):
-        st.session_state.vista_actual = "principal"; st.rerun()
-    
-    hist_acumulado = df_alertas[df_alertas['timestamp'] <= t_actual]
-    st.table(hist_acumulado[['timestamp', 'sensor', 'mensaje', 'tipo_anomalia_real']])
+    st.subheader("📜 Historial de Incidencias (Hasta hoy)")
+    if st.button("⬅️ Volver"): st.session_state.vista_actual = "principal"; st.rerun()
+    st.table(df_alertas[df_alertas['timestamp'] <= t_actual][['timestamp', 'sensor', 'mensaje', 'tipo_anomalia_real']])
 
-# Motor de simulación
+# Avance
 if st.session_state.corriendo and i < len(df) - 1 and st.session_state.vista_actual == "principal":
     st.session_state.indice += 1
     time.sleep(0.3)
