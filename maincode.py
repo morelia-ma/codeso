@@ -38,21 +38,42 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. CARGA DE DATOS
+# 3. CARGA DE DATOS (REFORZADA PARA ESTABILIDAD)
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv('datos_domotia_final.csv')
         df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize(None)
-        df['gas_level'] = df['gas_nivel'].ffill().bfill().fillna(0)
+        
+        # --- PARCHE DE ESTABILIDAD PARA GAS ---
+        # Limpiamos nulos en cascada: adelante, atrás y finalmente ceros.
+        df['gas_nivel'] = df['gas_nivel'].ffill().bfill().fillna(0)
+        # Aseguramos que la columna sea tratada como flotante
+        df['gas_nivel'] = df['gas_nivel'].astype(float)
         
         df_al = pd.read_csv('alertas_historico.csv')
         df_al['timestamp'] = pd.to_datetime(df_al['timestamp']).dt.tz_localize(None)
         return df, df_al
-    except:
+    except Exception as e:
+        st.error(f"Error al cargar datos: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
-df_raw, df_alertas_raw = load_data()
+# ... (El resto del código se mantiene igual)
+
+# En la sección 7 (Panel Principal), asegúrate de tener esto para el renderizado:
+with c_gas:
+    st.caption("⛽ Nivel de Gas")
+    # Forzamos la extracción como float puro para evitar que Streamlit lea objetos residuales
+    v_gas_ui = float(actual_row['gas_nivel']) 
+    
+    st.markdown(f"""
+        <div class="gas-wrapper">
+            <div class="gas-container">
+                <div class="gas-fill" style="height: {v_gas_ui}%;"></div>
+            </div>
+            <div class="gas-percentage">{v_gas_ui:.1f}%</div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # 4. ESTADO DE SESIÓN
 if 'indice' not in st.session_state: st.session_state.indice = 0
