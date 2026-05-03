@@ -190,8 +190,6 @@ if not df_raw.empty:
         for i, (l, v, f) in enumerate(met):
             with cols[i]: st.markdown(f'<div class="metric-card"><div class="metric-title">{l}</div><div class="metric-value">{f.format(v)}</div></div>', unsafe_allow_html=True)
 
-        # Quitamos el separador y el spacer para ahorrar espacio
-        
         c_graf, c_gas = st.columns([4, 0.8])
         ventana = df_presente.tail(30).set_index('timestamp')
         with c_graf:
@@ -207,10 +205,9 @@ if not df_raw.empty:
             st.caption("⛽ Nivel de Gas")
             v_gas_ui = float(actual_row['gas_nivel'])
             st.markdown(f'<div class="gas-wrapper"><div class="gas-container"><div class="gas-fill" style="height: {v_gas_ui}%;"></div></div><div class="gas-percentage">{v_gas_ui:.1f}%</div></div>', unsafe_allow_html=True)
-            # Reemplaza tu línea de margen por esta:
-st.markdown('<div style="position: relative; top: -60px;"></div>', unsafe_allow_html=True)
-
-
+            
+        # Este es el ajuste de posición (ya bien alineado para que no de error)
+        st.markdown('<div style="position: relative; top: -40px;"></div>', unsafe_allow_html=True)
 
         n1, n2, n3 = st.columns(3)
         if n1.button("📊 Historial Datos", use_container_width=True): 
