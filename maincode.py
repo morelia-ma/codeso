@@ -37,25 +37,13 @@ st.markdown("""
     .prediction-text { color: #388E3C; font-size: 0.85rem; line-height: 1.2; }
     </style>
     """, unsafe_allow_html=True)
-c_graf, c_gas = st.columns([4, 0.8])
-        ventana = df_presente.tail(30).set_index('timestamp')
-        with c_graf:
-            g1, g2 = st.columns(2)
-            with g1: 
-                st.caption("📈 Histórico Reciente: Agua") # Título restaurado
-                st.area_chart(ventana['consumo_agua'], height=250)
-            with g2: 
-                st.caption("📈 Histórico Reciente: Energía") # Título restaurado
-                st.line_chart(ventana['consumo_electrico'], height=250, color="#FFB703")
 
-# 3. CARGA DE DATOS (REFORZADA)
+# 3. CARGA DE DATOS
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv('datos_domotia_final.csv')
         df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize(None)
-        
-        # PARCHE ESTABILIDAD GAS: ffill -> bfill -> 0
         df['gas_nivel'] = df['gas_nivel'].ffill().bfill().fillna(0).astype(float)
         
         df_al = pd.read_csv('alertas_historico.csv')
@@ -97,11 +85,8 @@ with st.sidebar:
 
     st.subheader("🔔 Últimas Alertas")
     if not df_alertas_presente.empty:
-        # Filtramos alertas que han ocurrido hasta el momento actual de la simulación
-        # Mostramos las últimas 5 registradas para asegurar que el apartado no esté vacío
-        alertas_recientes = df_alertas_presente.tail(5).copy()
-        
-        # Aplicamos tu regla: No repetir gas el mismo día
+        # Mostramos las últimas alertas procesadas
+        alertas_recientes = df_alertas_presente.tail(10).copy()
         alertas_recientes['fecha_solo'] = alertas_recientes['timestamp'].dt.date
         alertas_unicas = alertas_recientes.sort_values('timestamp').drop_duplicates(subset=['fecha_solo', 'mensaje'], keep='last')
         
@@ -126,19 +111,9 @@ if not df_raw.empty:
         st.header("🚨 Histórico de Alarmas")
         if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
         if not df_alertas_presente.empty:
-            meses_al = df_alertas_presente['timestamp'].dt.month_name().unique()
-            mes_al_sel = st.selectbox("Selecciona Mes", options=meses_al)
-            dias_al = df_alertas_presente[df_alertas_presente['timestamp'].dt.month_name() == mes_al_sel]['timestamp'].dt.day.unique()
-            dia_al_sel = st.selectbox("Selecciona Día", options=dias_al)
-            al_fil = df_alertas_presente[(df_alertas_presente['timestamp'].dt.month_name() == mes_al_sel) & (df_alertas_presente['timestamp'].dt.day == dia_al_sel)]
-            st.table(al_fil.sort_values(by='timestamp', ascending=False))
+            st.table(df_alertas_presente.sort_values(by='timestamp', ascending=False).head(20))
         else:
             st.info("No hay alarmas.")
-
-    elif st.session_state.vista == "directorio":
-        st.header("📞 Directorio")
-        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
-        st.table(pd.DataFrame({"Servicio": ["Emergencias", "Fugas Gas", "Agua"], "Número": ["911", "800-GAS-LINE", "555-0102"]}))
 
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
@@ -156,10 +131,13 @@ if not df_raw.empty:
         ventana = df_presente.tail(30).set_index('timestamp')
         with c_graf:
             g1, g2 = st.columns(2)
-            with g1: st.area_chart(ventana['consumo_agua'], height=250)
-            with g2: st.line_chart(ventana['consumo_electrico'], height=250, color="#FFB703")
+            with g1: 
+                st.caption("📈 Histórico Reciente: Agua")
+                st.area_chart(ventana['consumo_agua'], height=250)
+            with g2: 
+                st.caption("📈 Histórico Reciente: Energía")
+                st.line_chart(ventana['consumo_electrico'], height=250, color="#FFB703")
         
-        # EL RENDERIZADO DEL GAS AHORA ESTÁ DENTRO DE LA VISTA PRINCIPAL
         with c_gas:
             st.caption("⛽ Nivel de Gas")
             v_gas_ui = float(actual_row['gas_nivel'])
@@ -173,10 +151,9 @@ if not df_raw.empty:
             """, unsafe_allow_html=True)
 
         st.markdown("---")
-        n1, n2, n3, _ = st.columns(4)
+        n1, n2, _ = st.columns([1, 1, 2])
         if n1.button("📊 Historial Datos", use_container_width=True): st.session_state.vista = "datos"; st.rerun()
         if n2.button("🚨 Historial Alarmas", use_container_width=True): st.session_state.vista = "alarmas"; st.rerun()
-        if n3.button("📞 Directorio", use_container_width=True): st.session_state.vista = "directorio"; st.rerun()
 
 # 8. BUCLE
 if st.session_state.corriendo and st.session_state.vista == "principal":
