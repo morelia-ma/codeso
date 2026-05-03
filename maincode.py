@@ -15,7 +15,9 @@ st.markdown("""
         background-color: white; border-radius: 10px; padding: 12px 18px;
         border-left: 5px solid #0077B6; box-shadow: 2px 2px 8px rgba(0,0,0,0.08);
         height: 100px;
-    }
+    margin-bottom: 30px;  
+}
+    
     .metric-title { font-size: 0.75rem; font-weight: 100; bold; color: #666; text-transform: uppercase; }
     .metric-value { font-size: 1.9rem; font-weight: 500; color: #1f2d3d; }
     .gas-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; }
