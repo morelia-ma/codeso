@@ -209,7 +209,7 @@ if not df_raw.empty:
             st.markdown(f'<div class="gas-wrapper"><div class="gas-container"><div class="gas-fill" style="height: {v_gas_ui}%;"></div></div><div class="gas-percentage">{v_gas_ui:.1f}%</div></div>', unsafe_allow_html=True)
 
         # Ajuste de margen pequeño para acercar los botones
-        st.markdown('<div style="margin-top: -10px;"></div>', unsafe_allow_html=True)
+        st.markdown('<div style="margin-top: -30px;"></div>', unsafe_allow_html=True)
 
         n1, n2, n3 = st.columns(3)
         if n1.button("📊 Historial Datos", use_container_width=True): 
