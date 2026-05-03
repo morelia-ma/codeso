@@ -6,106 +6,105 @@ from datetime import timedelta
 # 1. Configuración de página
 st.set_page_config(page_title="Smart Home HMI", layout="wide")
 
-# 2. Estilos CSS
+# 2. Estilos CSS para calcar el dibujo
 st.markdown("""
     <style>
+    .main { background-color: #ffffff; }
+    /* Contenedor del Tanque de Gas */
     .gas-container {
-        height: 350px; width: 100%; background-color: #f0f2f6;
-        border-radius: 15px; position: relative; overflow: hidden; border: 2px solid #dfe3e6;
+        height: 300px; width: 100%; background-color: #f0f2f6;
+        border-radius: 5px; position: relative; border: 1px solid #ccc;
     }
     .gas-fill {
         background-color: #2ECC71; width: 100%; position: absolute;
-        bottom: 0; transition: height 0.5s ease-in-out;
+        bottom: 0; transition: height 0.5s;
     }
     .gas-label {
         position: absolute; width: 100%; text-align: center;
-        top: 45%; font-weight: bold; color: #1f2d3d; font-size: 1.3rem; z-index: 2;
+        top: 45%; font-weight: bold; font-size: 1.2rem; z-index: 2;
     }
-    .stMetric { 
-        border-radius: 12px; background-color: #ffffff; padding: 15px; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-bottom: 4px solid #0077B6; 
+    /* Estilo para los cuadros de métricas superiores */
+    .metric-box {
+        background-color: #d3d3d3; padding: 15px; border-radius: 5px;
+        text-align: center; color: #000; font-size: 0.9rem; height: 80px;
+        display: flex; align-items: center; justify-content: center;
     }
-    .bitacora-item { padding: 8px; border-bottom: 1px solid #eee; font-size: 0.85rem; }
+    /* Sidebar y bordes */
+    section[data-testid="stSidebar"] { border-right: 2px solid #333; }
     </style>
     """, unsafe_allow_html=True)
 
 # 3. Carga de Datos
 @st.cache_data
-def load_all_data():
+def load_data():
     try:
-        df_gen = pd.read_csv('datos_domotia_final.csv')
-        df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp']).dt.tz_localize(None)
-        df_gen['gas_nivel'] = pd.to_numeric(df_gen['gas_nivel'], errors='coerce').ffill().fillna(0)
-        
+        df = pd.read_csv('datos_domotia_final.csv')
+        df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize(None)
         df_al = pd.read_csv('alertas_historico.csv')
         df_al['timestamp'] = pd.to_datetime(df_al['timestamp']).dt.tz_localize(None)
-        return df_gen, df_al
-    except Exception as e:
-        st.error(f"Error: {e}")
+        return df, df_al
+    except:
         return pd.DataFrame(), pd.DataFrame()
 
-df, df_alertas = load_all_data()
+df, df_alertas = load_data()
 
 # Estado de la Sesión
 if 'indice' not in st.session_state: st.session_state.indice = 0
 if 'corriendo' not in st.session_state: st.session_state.corriendo = False
-if 'vista_actual' not in st.session_state: st.session_state.vista_actual = "principal"
-if 'lista_contactos' not in st.session_state:
-    st.session_state.lista_contactos = []
+if 'vista' not in st.session_state: st.session_state.vista = "principal"
 
-# --- SIDEBAR ---
+# --- SIDEBAR (Panel de Control de Simulación) ---
 with st.sidebar:
-    st.title("🕹️ Panel de Control")
-    if st.button("▶️ Iniciar / ⏸️ Pausar", use_container_width=True):
+    st.header("Panel de control de simulación")
+    if st.button("Inicio / Pausa", use_container_width=True):
         st.session_state.corriendo = not st.session_state.corriendo
     
-    if st.button("🔄 Reiniciar", use_container_width=True):
+    if st.button("Reiniciar", use_container_width=True):
         st.session_state.indice = 0
         st.session_state.corriendo = False
         st.rerun()
 
-    st.divider()
+    st.markdown("---")
     st.subheader("🔔 Alertas (Últimas 24h)")
-    t_actual = df.iloc[st.session_state.indice]['timestamp']
-    alertas_v = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= t_actual - timedelta(hours=24))]
-    
-    if not alertas_v.empty:
-        for _, row in alertas_v.tail(5).iterrows():
-            st.warning(f"{row['mensaje']}")
-    else:
-        st.success("✅ Sin alertas recientes")
+    if not df.empty:
+        t_actual = df.iloc[st.session_state.indice]['timestamp']
+        alertas_v = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= t_actual - timedelta(hours=24))]
+        if not alertas_v.empty:
+            for m in alertas_v['mensaje'].tail(5):
+                st.caption(f"⚠️ {m}")
+        else:
+            st.info("Aquí se muestra en tiempo real las alarmas activas en 24 horas.")
 
 # --- CUERPO PRINCIPAL ---
 if not df.empty:
     actual = df.iloc[st.session_state.indice]
 
-    if st.session_state.vista_actual == "principal":
-        # Encabezado
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("AGUA", f"{actual['consumo_agua']:.1f} L 💧")
-        m2.metric("ENERGÍA", f"{actual['consumo_electrico']:.3f} kWh ⚡")
-        m3.metric("HUMEDAD", f"{actual['humedad_interior']:.1f} % 💧")
-        m4.metric("TEMP. INT", f"{actual['temperatura_int']:.1f} °C 🌡️")
+    if st.session_state.vista == "principal":
+        st.title("📊 Monitoreo del hogar \"Fam Montoya\"")
 
-        st.divider()
+        # Fila de métricas (Cuadros grises superiores)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(f'<div class="metric-box">Consumo de agua:<br><b>{actual["consumo_agua"]:.1f} L</b></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="metric-box">Consumo de energía:<br><b>{actual["consumo_electrico"]:.3f} kWh</b></div>', unsafe_allow_html=True)
+        c3.markdown(f'<div class="metric-box">Humedad:<br><b>{actual["humedad_interior"]:.1f} %</b></div>', unsafe_allow_html=True)
+        c4.markdown(f'<div class="metric-box">Temperatura:<br><b>{actual["temperatura_int"]:.1f} °C</b></div>', unsafe_allow_html=True)
 
-        col_graficas, col_tanque = st.columns([3, 1])
+        st.write(" ") # Espaciado
 
-        with col_graficas:
-            st.subheader("📊 Monitoreo en Tiempo Real")
-            ventana = df.iloc[max(0, st.session_state.indice-50):st.session_state.indice+1].set_index('timestamp')
-            
-            st.caption("Consumo de Agua (L)")
-            st.area_chart(ventana['consumo_agua'], color="#0077B6", height=180)
-            
-            st.caption("Consumo Eléctrico (kWh)")
-            st.line_chart(ventana['consumo_electrico'], color="#FFB703", height=180)
-            
-            st.caption("Nivel de Gas (%)")
-            st.line_chart(ventana['gas_nivel'], color="#2ECC71", height=120)
+        # Fila de Gráficas y Gas
+        col_agua, col_luz, col_gas = st.columns([2, 2, 1])
+        ventana = df.iloc[max(0, st.session_state.indice-30):st.session_state.indice+1].set_index('timestamp')
 
-        with col_tanque:
-            st.subheader("⛽ Tanque")
+        with col_agua:
+            st.markdown("**Consumo de Agua (L)**")
+            st.area_chart(ventana['consumo_agua'], height=300, use_container_width=True)
+
+        with col_luz:
+            st.markdown("**Consumo Eléctrico (kWh)**")
+            st.line_chart(ventana['consumo_electrico'], height=300, use_container_width=True, color="#FFB703")
+
+        with col_gas:
+            st.markdown("⛽ **Gas**")
             p_gas = float(actual['gas_nivel'])
             st.markdown(f"""
                 <div class="gas-container">
@@ -114,49 +113,31 @@ if not df.empty:
                 </div>
             """, unsafe_allow_html=True)
 
-        st.divider()
-        c1, c2, c3 = st.columns(3)
-        if c1.button("📑 Historial de Datos", use_container_width=True): st.session_state.vista_actual = "datos"
-        if c2.button("📜 Registro de Alarmas", use_container_width=True): st.session_state.vista_actual = "alarmas"
-        if c3.button("📞 Directorio", use_container_width=True): st.session_state.vista_actual = "directorio"
+        st.markdown("---")
+        # Fila de botones inferiores
+        b1, b2, b3, b4 = st.columns(4)
+        if b1.button("Historial de datos según fecha", use_container_width=True): st.session_state.vista = "datos"
+        if b2.button("Historial de alarmas según fecha", use_container_width=True): st.session_state.vista = "alarmas"
+        if b3.button("Acceder a directorio", use_container_width=True): st.session_state.vista = "directorio"
+        b4.button("Editar información general", use_container_width=True, disabled=False) # Solo visualización
 
-    elif st.session_state.vista_actual == "directorio":
-        st.subheader("📞 Directorio de Contactos")
-        if st.button("⬅️ Volver al Panel"): st.session_state.vista_actual = "principal"; st.rerun()
-        
-        col_form, col_lista = st.columns([1, 1])
-        
-        with col_form:
-            with st.form("nuevo_contacto", clear_on_submit=True):
-                tipo = st.selectbox("Tipo de Servicio", ["Emergencia", "Bomberos", "Agua", "Luz", "Gas"])
-                nombre = st.text_input("Nombre del Responsable/Servicio")
-                numero = st.text_input("Número de Teléfono")
-                if st.form_submit_button("Guardar Contacto"):
-                    if nombre and numero:
-                        st.session_state.lista_contactos.append({"Tipo": tipo, "Nombre": nombre, "Número": numero})
-                        st.success("Guardado")
-                    else:
-                        st.error("Llena todos los campos")
-        
-        with col_lista:
-            st.write("### Contactos Guardados")
-            if st.session_state.lista_contactos:
-                st.table(pd.DataFrame(st.session_state.lista_contactos))
-            else:
-                st.info("No hay contactos guardados.")
+    # --- VISTAS SECUNDARIAS ---
+    elif st.session_state.vista == "directorio":
+        st.subheader("📞 Directorio")
+        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        st.info("Espacio para gestión de contactos (Emergencia, Agua, Luz, Gas, Bomberos)")
 
-    elif st.session_state.vista_actual == "datos":
-        st.subheader("📑 Historial Completo")
-        if st.button("⬅️ Volver"): st.session_state.vista_actual = "principal"; st.rerun()
-        # Aquí puedes añadir selectores de fecha si lo deseas
-        st.dataframe(df[df['timestamp'] <= t_actual].tail(100), use_container_width=True)
+    elif st.session_state.vista == "datos":
+        st.subheader("📑 Historial de Datos")
+        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        st.dataframe(df[df['timestamp'] <= t_actual].tail(50), use_container_width=True)
 
-    elif st.session_state.vista_actual == "alarmas":
-        st.subheader("📜 Registro Histórico de Alarmas")
-        if st.button("⬅️ Volver"): st.session_state.vista_actual = "principal"; st.rerun()
-        st.table(df_alertas[df_alertas['timestamp'] <= t_actual].tail(20))
+    elif st.session_state.vista == "alarmas":
+        st.subheader("📜 Historial de Alarmas")
+        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        st.table(df_alertas[df_alertas['timestamp'] <= t_actual].tail(15))
 
-# Ejecución
+# Loop de simulación
 if st.session_state.corriendo and st.session_state.indice < len(df) - 1:
     st.session_state.indice += 1
     time.sleep(0.1)
