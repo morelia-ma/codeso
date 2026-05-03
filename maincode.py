@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
+import os
 from datetime import timedelta
 
 # 1. CONFIGURACIÓN DE PÁGINA
@@ -38,7 +39,28 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. CARGA DE DATOS
+# 3. FUNCIONES DE PERSISTENCIA (DIRECTORIO)
+def cargar_directorio():
+    if os.path.exists('directorio.csv'):
+        return pd.read_csv('directorio.csv')
+    else:
+        # Contactos por defecto
+        df_ini = pd.DataFrame({"Servicio": ["Emergencias", "Fugas Gas", "Agua"], "Número": ["911", "800-GAS-LINE", "555-0102"]})
+        df_ini.to_csv('directorio.csv', index=False)
+        return df_ini
+
+def guardar_contacto(servicio, numero):
+    df = cargar_directorio()
+    nuevo = pd.DataFrame({"Servicio": [servicio], "Número": [str(numero)]})
+    df = pd.concat([df, nuevo], ignore_index=True)
+    df.to_csv('directorio.csv', index=False)
+
+def eliminar_contacto(index):
+    df = cargar_directorio()
+    df = df.drop(index)
+    df.to_csv('directorio.csv', index=False)
+
+# 4. CARGA DE DATOS TELEMETRÍA
 @st.cache_data
 def load_data():
     try:
@@ -55,19 +77,19 @@ def load_data():
 
 df_raw, df_alertas_raw = load_data()
 
-# 4. ESTADO DE SESIÓN
+# 5. ESTADO DE SESIÓN
 if 'indice' not in st.session_state: st.session_state.indice = 0
 if 'corriendo' not in st.session_state: st.session_state.corriendo = False
 if 'vista' not in st.session_state: st.session_state.vista = "principal"
 
-# 5. LÓGICA DE TIEMPO
+# 6. LÓGICA DE TIEMPO
 if not df_raw.empty:
     actual_row = df_raw.iloc[st.session_state.indice]
     t_presente = actual_row['timestamp']
     df_presente = df_raw[df_raw['timestamp'] <= t_presente]
     df_alertas_presente = df_alertas_raw[df_alertas_raw['timestamp'] <= t_presente]
 
-# 6. SIDEBAR
+# 7. SIDEBAR
 with st.sidebar:
     st.header("🎮 Control")
     c1, c2 = st.columns(2)
@@ -85,7 +107,6 @@ with st.sidebar:
 
     st.subheader("🔔 Últimas Alertas")
     if not df_alertas_presente.empty:
-        # Mostramos las últimas alertas procesadas
         alertas_recientes = df_alertas_presente.tail(10).copy()
         alertas_recientes['fecha_solo'] = alertas_recientes['timestamp'].dt.date
         alertas_unicas = alertas_recientes.sort_values('timestamp').drop_duplicates(subset=['fecha_solo', 'mensaje'], keep='last')
@@ -95,7 +116,7 @@ with st.sidebar:
     else:
         st.write("Sin alertas registradas.")
 
-# 7. VISTAS
+# 8. VISTAS
 if not df_raw.empty:
     if st.session_state.vista == "datos":
         st.header("📊 Historial de Telemetría")
@@ -113,7 +134,34 @@ if not df_raw.empty:
         if not df_alertas_presente.empty:
             st.table(df_alertas_presente.sort_values(by='timestamp', ascending=False).head(20))
         else:
-            st.info("No hay alarmas.")
+            st.info("No hay alarmas registradas hasta este punto de la simulación.")
+
+    elif st.session_state.vista == "directorio":
+        st.header("📞 Directorio de Servicios")
+        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        
+        col_add, col_list = st.columns([1, 2])
+        
+        with col_add:
+            st.subheader("Añadir Contacto")
+            with st.form("nuevo_contacto", clear_on_submit=True):
+                nombre_s = st.text_input("Nombre del Servicio")
+                numero_s = st.text_input("Número")
+                if st.form_submit_button("Guardar"):
+                    if nombre_s and numero_s:
+                        guardar_contacto(nombre_s, numero_s)
+                        st.success("Guardado")
+                        st.rerun()
+        
+        with col_list:
+            st.subheader("Lista de Contactos")
+            df_dir = cargar_directorio()
+            for idx, row in df_dir.iterrows():
+                c_info, c_del = st.columns([3, 1])
+                c_info.write(f"**{row['Servicio']}**: {row['Número']}")
+                if c_del.button("Eliminar", key=f"del_{idx}"):
+                    eliminar_contacto(idx)
+                    st.rerun()
 
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
@@ -151,11 +199,19 @@ if not df_raw.empty:
             """, unsafe_allow_html=True)
 
         st.markdown("---")
-        n1, n2, _ = st.columns([1, 1, 2])
-        if n1.button("📊 Historial Datos", use_container_width=True): st.session_state.vista = "datos"; st.rerun()
-        if n2.button("🚨 Historial Alarmas", use_container_width=True): st.session_state.vista = "alarmas"; st.rerun()
+        # BOTONES DE NAVEGACIÓN (Reparados)
+        n1, n2, n3, _ = st.columns([1, 1, 1, 1])
+        if n1.button("📊 Historial Datos", use_container_width=True): 
+            st.session_state.vista = "datos"
+            st.rerun()
+        if n2.button("🚨 Historial Alarmas", use_container_width=True): 
+            st.session_state.vista = "alarmas"
+            st.rerun()
+        if n3.button("📞 Directorio", use_container_width=True): 
+            st.session_state.vista = "directorio"
+            st.rerun()
 
-# 8. BUCLE
+# 9. BUCLE DE SIMULACIÓN
 if st.session_state.corriendo and st.session_state.vista == "principal":
     if st.session_state.indice < len(df_raw) - 1:
         st.session_state.indice += 1
