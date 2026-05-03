@@ -107,9 +107,12 @@ with st.sidebar:
 
 # 7. VISTAS
 if not df_raw.empty:
+    # --- VISTA: DATOS ---
     if st.session_state.vista == "datos":
         st.header("📊 Historial de Telemetría")
-        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        if st.button("⬅ Volver"): 
+            st.session_state.vista = "principal"
+            st.rerun()
         meses = df_presente['timestamp'].dt.month_name().unique()
         mes_sel = st.selectbox("Selecciona Mes", options=meses)
         dias = df_presente[df_presente['timestamp'].dt.month_name() == mes_sel]['timestamp'].dt.day.unique()
@@ -117,85 +120,64 @@ if not df_raw.empty:
         df_filtrado = df_presente[(df_presente['timestamp'].dt.month_name() == mes_sel) & (df_presente['timestamp'].dt.day == dia_sel)]
         st.dataframe(df_filtrado.sort_values(by='timestamp', ascending=False), use_container_width=True)
 
+    # --- VISTA: ALARMAS ---
     elif st.session_state.vista == "alarmas":
         st.header("🚨 Histórico de Alarmas")
-        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
-        
-        if not df_alertas_presente.empty:
-            meses_al = df_alertas_presente['timestamp'].dt.month_name().unique()
-            mes_sel_al = st.selectbox("Selecciona Mes de Alerta", options=meses_al)
-            
-            dias_al = df_alertas_presente[df_alertas_presente['timestamp'].dt.month_name() == mes_sel_al]['timestamp'].dt.day.unique()
-            dia_sel_al = st.selectbox("Selecciona Día de Alerta", options=dias_al)
-            
-            df_al_filtrado = df_alertas_presente[
-                (df_alertas_presente['timestamp'].dt.month_name() == mes_sel_al) & 
-                (df_alertas_presente['timestamp'].dt.day == dia_sel_al)
-            ]
-            
-            st.dataframe(df_al_filtrado.sort_values(by='timestamp', ascending=False), use_container_width=True)
-        else:
-            st.info("No hay alarmas registradas hasta el momento.")
-
-    # --- SECCIÓN: DIRECTORIO DINÁMICO (CORREGIDA) ---
-    elif st.session_state.vista == "directorio":
-        st.header("📇 Directorio de Contactos de Emergencia")
         if st.button("⬅ Volver"): 
             st.session_state.vista = "principal"
             st.rerun()
+        if not df_alertas_presente.empty:
+            meses_al = df_alertas_presente['timestamp'].dt.month_name().unique()
+            mes_sel_al = st.selectbox("Selecciona Mes de Alerta", options=meses_al)
+            dias_al = df_alertas_presente[df_alertas_presente['timestamp'].dt.month_name() == mes_sel_al]['timestamp'].dt.day.unique()
+            dia_sel_al = st.selectbox("Selecciona Día de Alerta", options=dias_al)
+            df_al_filtrado = df_alertas_presente[(df_alertas_presente['timestamp'].dt.month_name() == mes_sel_al) & (df_alertas_presente['timestamp'].dt.day == dia_sel_al)]
+            st.dataframe(df_al_filtrado.sort_values(by='timestamp', ascending=False), use_container_width=True)
+        else:
+            st.info("No hay alarmas registradas.")
 
-        import os
-        def gestionar_contactos():
-            if os.path.exists('directorio_personal.csv'):
-                return pd.read_csv('directorio_personal.csv')
-            data_inicial = [
-                {"Nombre": "Soporte Gas LP", "Teléfono": "555-0123", "Relación": "Proveedor"},
-                {"Nombre": "Electricista Confianza", "Teléfono": "555-0987", "Relación": "Mantenimiento"},
-                {"Nombre": "Bomberos Locales", "Teléfono": "911", "Relación": "Emergencia"}
-            ]
-            return pd.DataFrame(data_inicial)
+    # --- VISTA: DIRECTORIO (ENCAPSULADO TOTAL) ---
+    elif st.session_state.vista == "directorio":
+        with st.container():
+            st.header("📇 Directorio de Contactos de Emergencia")
+            if st.button("⬅ Volver"): 
+                st.session_state.vista = "principal"
+                st.rerun()
 
-        df_contactos = gestionar_contactos()
+            import os
+            def gestionar_contactos():
+                if os.path.exists('directorio_personal.csv'):
+                    return pd.read_csv('directorio_personal.csv')
+                return pd.DataFrame([
+                    {"Nombre": "Soporte Gas LP", "Teléfono": "555-0123", "Relación": "Proveedor"},
+                    {"Nombre": "Electricista Confianza", "Teléfono": "555-0987", "Relación": "Mantenimiento"}
+                ])
 
-        # 1. LISTA
-        st.subheader("📋 Lista de Contactos")
-        st.dataframe(df_contactos, use_container_width=True)
-        st.info("💡 Estos contactos están disponibles para respuesta rápida ante alarmas críticas.")
-        st.markdown("---")
+            df_contactos = gestionar_contactos()
+            st.subheader("📋 Lista de Contactos")
+            st.dataframe(df_contactos, use_container_width=True)
 
-        # 2. AÑADIR
-        with st.form("nuevo_contacto", clear_on_submit=True):
-            st.subheader("➕ Agregar Nuevo Contacto")
-            col_n, col_t, col_r = st.columns(3)
-            nuevo_nom = col_n.text_input("Nombre")
-            nuevo_tel = col_t.text_input("Teléfono")
-            nuevo_rel = col_r.text_input("Relación")
-            
-            if st.form_submit_button("Guardar Contacto"):
-                if nuevo_nom and nuevo_tel:
-                    nueva_fila = pd.DataFrame([{"Nombre": nuevo_nom, "Teléfono": nuevo_tel, "Relación": nuevo_rel}])
-                    df_contactos = pd.concat([df_contactos, nueva_fila], ignore_index=True)
+            with st.form("nuevo_contacto", clear_on_submit=True):
+                st.subheader("➕ Agregar Nuevo Contacto")
+                c1, c2, c3 = st.columns(3)
+                n_nom = c1.text_input("Nombre")
+                n_tel = c2.text_input("Teléfono")
+                n_rel = c3.text_input("Relación")
+                if st.form_submit_button("Guardar"):
+                    if n_nom and n_tel:
+                        df_contactos = pd.concat([df_contactos, pd.DataFrame([{"Nombre": n_nom, "Teléfono": n_tel, "Relación": n_rel}])], ignore_index=True)
+                        df_contactos.to_csv('directorio_personal.csv', index=False)
+                        st.rerun()
+
+            with st.expander("🗑️ Gestionar / Eliminar"):
+                eliminar = st.multiselect("Selecciona para borrar:", options=df_contactos['Nombre'].tolist())
+                if st.button("Confirmar Eliminación", type="primary"):
+                    df_contactos = df_contactos[~df_contactos['Nombre'].isin(eliminar)]
                     df_contactos.to_csv('directorio_personal.csv', index=False)
-                    st.success(f"✅ {nuevo_nom} guardado correctamente.")
                     st.rerun()
-                else:
-                    st.error("Por favor llena Nombre y Teléfono.")
+            st.stop()
 
-        # 3. ELIMINAR (Ahora sí, dentro de la vista)
-        with st.expander("🗑️ Gestionar / Eliminar Contactos"):
-            contactos_a_eliminar = st.multiselect("Selecciona contactos para eliminar:", options=df_contactos['Nombre'].tolist())
-            if st.button("Eliminar Seleccionados", type="primary"):
-                if contactos_a_eliminar:
-                    df_contactos = df_contactos[~df_contactos['Nombre'].isin(contactos_a_eliminar)]
-                    df_contactos.to_csv('directorio_personal.csv', index=False)
-                    st.warning(f"Se eliminaron {len(contactos_a_eliminar)} contactos.")
-                    st.rerun()
-                else:
-                    st.info("No has seleccionado ningún contacto.")
-        
-        st.stop() # Bloquea la renderización de la principal si estamos aquí
-
-    # --- VISTA PRINCIPAL ---
+    # --- VISTA: PRINCIPAL ---
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
         st.caption(f"Simulación: {t_presente.strftime('%d/%m/%Y %H:%M:%S')}")
@@ -222,20 +204,19 @@ if not df_raw.empty:
         with c_gas:
             st.caption("⛽ Nivel de Gas")
             v_gas_ui = float(actual_row['gas_nivel'])
-            st.markdown(f"""
-                <div class="gas-wrapper">
-                    <div class="gas-container">
-                        <div class="gas-fill" style="height: {v_gas_ui}%;"></div>
-                    </div>
-                    <div class="gas-percentage">{v_gas_ui:.1f}%</div>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="gas-wrapper"><div class="gas-container"><div class="gas-fill" style="height: {v_gas_ui}%;"></div></div><div class="gas-percentage">{v_gas_ui:.1f}%</div></div>', unsafe_allow_html=True)
 
         st.markdown("---")
-        n1, n2, n3 = st.columns([1, 1, 1])
-        if n1.button("📊 Historial Datos", use_container_width=True): st.session_state.vista = "datos"; st.rerun()
-        if n2.button("🚨 Historial Alarmas", use_container_width=True): st.session_state.vista = "alarmas"; st.rerun()
-        if n3.button("📇 Directorio", use_container_width=True): st.session_state.vista = "directorio"; st.rerun()
+        n1, n2, n3 = st.columns(3)
+        if n1.button("📊 Historial Datos", use_container_width=True): 
+            st.session_state.vista = "datos"
+            st.rerun()
+        if n2.button("🚨 Historial Alarmas", use_container_width=True): 
+            st.session_state.vista = "alarmas"
+            st.rerun()
+        if n3.button("📇 Directorio", use_container_width=True): 
+            st.session_state.vista = "directorio"
+            st.rerun()
 # 8. BUCLE
 if st.session_state.corriendo and st.session_state.vista == "principal":
     if st.session_state.indice < len(df_raw) - 1:
