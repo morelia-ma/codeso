@@ -205,9 +205,20 @@ if not df_raw.empty:
             st.caption("⛽ Nivel de Gas")
             v_gas_ui = float(actual_row['gas_nivel'])
             st.markdown(f'<div class="gas-wrapper"><div class="gas-container"><div class="gas-fill" style="height: {v_gas_ui}%;"></div></div><div class="gas-percentage">{v_gas_ui:.1f}%</div></div>', unsafe_allow_html=True)
-            
-        # Este es el ajuste de posición (ya bien alineado para que no de error)
-        st.markdown('<div style="position: relative; top: -400px;"></div>', unsafe_allow_html=True)
+
+        # PLAN MAESTRO: Inyectamos CSS que busca el bloque de botones y lo sube a la fuerza
+        st.markdown("""
+            <style>
+                /* Esto busca el contenedor de las columnas de abajo y le quita el espacio muerto */
+                div[data-testid="stVerticalBlock"] > div:has(div[data-testid="stHorizontalBlock"]) {
+                    margin-top: -50px !important;
+                }
+                /* Específicamente para los botones */
+                .stButton {
+                    margin-top: -20px !important;
+                }
+            </style>
+        """, unsafe_allow_html=True)
 
         n1, n2, n3 = st.columns(3)
         if n1.button("📊 Historial Datos", use_container_width=True): 
