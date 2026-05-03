@@ -14,6 +14,8 @@ st.markdown("""
     .falla-agua { color: #0077B6; font-weight: bold; }
     .falla-luz { color: #E67E22; font-weight: bold; }
     .falla-gas { color: #E74C3C; font-weight: bold; }
+    /* Estilo para la barra de gas tipo batería */
+    .stProgress > div > div > div > div { background-color: #E74C3C; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -46,51 +48,60 @@ if 'vista_actual' not in st.session_state: st.session_state.vista_actual = "prin
 if not df.empty:
     t_actual = df.iloc[st.session_state.indice]['timestamp']
 
-    # --- SIDEBAR: PANEL DE CONTROL ---
+    # --- SIDEBAR ---
     st.sidebar.title("🕹️ Panel de Control")
     if st.sidebar.button("▶️ Iniciar / ⏸️ Pausar", key="play_btn"):
         st.session_state.corriendo = not st.session_state.corriendo
-    if st.sidebar.button("🔄 Reiniciar Simulación", key="reset_btn"):
+    if st.sidebar.button("🔄 Reiniciar", key="reset_btn"):
         st.session_state.indice = 0
         st.session_state.corriendo = False
         st.rerun()
 
-    # --- SIDEBAR: ALERTAS ÚNICAS POR DÍA ---
+    # --- SIDEBAR: ALERTAS (MÁXIMO 24H ATRÁS) ---
     st.sidebar.divider()
-    st.sidebar.subheader("🔔 Alertas Recientes")
-    alertas_vistas = df_alertas[df_alertas['timestamp'] <= t_actual].copy()
+    st.sidebar.subheader("🔔 Alertas (Últimas 24h)")
+    
+    # Lógica de 24 horas: alertas entre (t_actual - 24h) y (t_actual)
+    limite_24h = t_actual - timedelta(hours=24)
+    alertas_recientes = df_alertas[
+        (df_alertas['timestamp'] <= t_actual) & 
+        (df_alertas['timestamp'] >= limite_24h)
+    ].copy()
 
-    if not alertas_vistas.empty:
-        alertas_vistas['solo_fecha'] = alertas_vistas['timestamp'].dt.date
-        alertas_unicas_dia = alertas_vistas.sort_values('timestamp', ascending=True).drop_duplicates(subset=['solo_fecha', 'tipo_anomalia_real'])
+    if not alertas_recientes.empty:
+        # Mantener solo una alerta por tipo en este rango para no saturar
+        alertas_recientes['fecha_dia'] = alertas_recientes['timestamp'].dt.date
+        alertas_unicas = alertas_recientes.drop_duplicates(subset=['fecha_dia', 'tipo_anomalia_real'])
         
-        for _, row in alertas_unicas_dia.sort_values('timestamp', ascending=False).iterrows():
+        for _, row in alertas_unicas.sort_values('timestamp', ascending=False).iterrows():
             tipo = str(row.get('tipo_anomalia_real', '')).lower()
             clase = "falla-gas" if "gas" in tipo else "falla-agua" if "agua" in tipo else "falla-luz"
-            st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%d/%m %H:%M')}</small><br><span class='{clase}'>⚠️ {row['mensaje'].upper()}</span></div>", unsafe_allow_html=True)
+            st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%H:%M')}</small><br><span class='{clase}'>⚠️ {row['mensaje'].upper()}</span></div>", unsafe_allow_html=True)
+    else:
+        st.sidebar.write("✅ Sin alertas en las últimas 24h")
 
-    # --- CONTENEDOR PRINCIPAL ---
-    main_view = st.empty()
+    # --- CUERPO PRINCIPAL ---
+    main_placeholder = st.empty()
 
-    with main_view.container():
+    with main_placeholder.container():
         idx = st.session_state.indice
         actual = df.iloc[idx]
 
         if st.session_state.vista_actual == "principal":
             st.title("🏠 Dashboard CODESO Smart Home")
             
-            # Indicadores Numéricos (KPIs)
+            # Indicadores
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}")
             k2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}")
-            k3.metric("GAS % 🔥", f"{actual['gas_nivel']:.1f}%")
+            k3.metric("GAS 🔥", f"{actual['gas_nivel']:.1f}%")
             k4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
             st.divider()
             
-            # TRES GRÁFICAS EN FILA
+            # FILA DE GRÁFICAS Y "BATERÍA" DE GAS
             ventana = df.iloc[max(0, idx-50):idx+1]
-            g1, g2, g3 = st.columns(3)
+            g1, g2, g3 = st.columns([2, 2, 1]) # La tercera columna es más estrecha para la "batería"
             
             with g1:
                 st.subheader("Consumo Agua")
@@ -102,39 +113,37 @@ if not df.empty:
                 
             with g3:
                 st.subheader("Nivel de Gas")
-                st.line_chart(ventana.set_index('timestamp')['gas_nivel'], color="#E74C3C")
+                # Lógica visual de batería
+                nivel_gas = float(actual['gas_nivel'])
+                st.write(f"Capacidad: {nivel_gas}%")
+                st.progress(nivel_gas / 100)
+                if nivel_gas < 20:
+                    st.warning("Nivel de gas bajo")
 
             st.divider()
             
-            # Botones de navegación (estables en la parte inferior)
+            # Botones de navegación (ÚNICOS)
             c1, c2 = st.columns(2)
-            if c1.button("📊 Ver Datos Almacenados", use_container_width=True, key="nav_dt"):
+            if c1.button("📊 Ver Datos Almacenados", use_container_width=True, key="btn_view_data"):
                 st.session_state.vista_actual = "datos"
                 st.rerun()
-            if c2.button("📜 Ver Historial de Alarmas", use_container_width=True, key="nav_al"):
+            if c2.button("📜 Ver Historial de Alarmas", use_container_width=True, key="btn_view_hist"):
                 st.session_state.vista_actual = "alarmas"
                 st.rerun()
 
         elif st.session_state.vista_actual == "datos":
-            st.subheader("🔍 Historial de Consumo")
-            if st.button("⬅️ Volver", key="back_v1"): 
-                st.session_state.vista_actual = "principal"
-                st.rerun()
-            
+            if st.button("⬅️ Volver", key="back_to_main_1"): 
+                st.session_state.vista_actual = "principal"; st.rerun()
             df_v = df[df['timestamp'] <= t_actual].copy()
-            def color_anomalia(row):
-                return ['background-color: #ffcccc' if row.get('anomalia') == True else '' for _ in row]
-            st.dataframe(df_v.tail(100).style.apply(color_anomalia, axis=1), use_container_width=True)
+            st.dataframe(df_v.tail(100), use_container_width=True)
 
         elif st.session_state.vista_actual == "alarmas":
-            st.subheader("📜 Registro Completo de Alarmas")
-            if st.button("⬅️ Volver", key="back_v2"): 
-                st.session_state.vista_actual = "principal"
-                st.rerun()
+            if st.button("⬅️ Volver", key="back_to_main_2"): 
+                st.session_state.vista_actual = "principal"; st.rerun()
             st.table(df_alertas[df_alertas['timestamp'] <= t_actual].tail(30))
 
     # Motor de Simulación
     if st.session_state.corriendo and idx < len(df) - 1 and st.session_state.vista_actual == "principal":
         st.session_state.indice += 1
-        time.sleep(0.05) # Un poco más rápido para ver el flujo de las 3 gráficas
+        time.sleep(0.05)
         st.rerun()
