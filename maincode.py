@@ -37,6 +37,16 @@ st.markdown("""
     .prediction-text { color: #388E3C; font-size: 0.85rem; line-height: 1.2; }
     </style>
     """, unsafe_allow_html=True)
+c_graf, c_gas = st.columns([4, 0.8])
+        ventana = df_presente.tail(30).set_index('timestamp')
+        with c_graf:
+            g1, g2 = st.columns(2)
+            with g1: 
+                st.caption("📈 Histórico Reciente: Agua") # Título restaurado
+                st.area_chart(ventana['consumo_agua'], height=250)
+            with g2: 
+                st.caption("📈 Histórico Reciente: Energía") # Título restaurado
+                st.line_chart(ventana['consumo_electrico'], height=250, color="#FFB703")
 
 # 3. CARGA DE DATOS (REFORZADA)
 @st.cache_data
@@ -87,14 +97,16 @@ with st.sidebar:
 
     st.subheader("🔔 Últimas Alertas")
     if not df_alertas_presente.empty:
-        filtro_24h = df_alertas_presente[df_alertas_presente['timestamp'] >= t_presente - timedelta(hours=24)].copy()
-        if not filtro_24h.empty:
-            filtro_24h['fecha_solo'] = filtro_24h['timestamp'].dt.date
-            alertas_unicas = filtro_24h.sort_values('timestamp').drop_duplicates(subset=['fecha_solo', 'mensaje'], keep='last')
-            for _, fila in alertas_unicas.tail(3).iterrows():
-                st.caption(f"🕒 {fila['timestamp'].strftime('%H:%M')} - {fila['mensaje']}")
-        else:
-            st.write("Sin alertas en las últimas 24h.")
+        # Filtramos alertas que han ocurrido hasta el momento actual de la simulación
+        # Mostramos las últimas 5 registradas para asegurar que el apartado no esté vacío
+        alertas_recientes = df_alertas_presente.tail(5).copy()
+        
+        # Aplicamos tu regla: No repetir gas el mismo día
+        alertas_recientes['fecha_solo'] = alertas_recientes['timestamp'].dt.date
+        alertas_unicas = alertas_recientes.sort_values('timestamp').drop_duplicates(subset=['fecha_solo', 'mensaje'], keep='last')
+        
+        for _, fila in alertas_unicas.tail(3).iterrows():
+            st.caption(f"🕒 {fila['timestamp'].strftime('%H:%M')} - {fila['mensaje']}")
     else:
         st.write("Sin alertas registradas.")
 
