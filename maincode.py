@@ -85,7 +85,6 @@ with st.sidebar:
 
     st.subheader("🔔 Últimas Alertas")
     if not df_alertas_presente.empty:
-        # Mostramos las últimas alertas procesadas
         alertas_recientes = df_alertas_presente.tail(10).copy()
         alertas_recientes['fecha_solo'] = alertas_recientes['timestamp'].dt.date
         alertas_unicas = alertas_recientes.sort_values('timestamp').drop_duplicates(subset=['fecha_solo', 'mensaje'], keep='last')
@@ -110,10 +109,23 @@ if not df_raw.empty:
     elif st.session_state.vista == "alarmas":
         st.header("🚨 Histórico de Alarmas")
         if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        
         if not df_alertas_presente.empty:
-            st.table(df_alertas_presente.sort_values(by='timestamp', ascending=False).head(20))
+            # FILTRO POR MES Y DÍA (Modificación solicitada)
+            meses_al = df_alertas_presente['timestamp'].dt.month_name().unique()
+            mes_sel_al = st.selectbox("Selecciona Mes de Alerta", options=meses_al)
+            
+            dias_al = df_alertas_presente[df_alertas_presente['timestamp'].dt.month_name() == mes_sel_al]['timestamp'].dt.day.unique()
+            dia_sel_al = st.selectbox("Selecciona Día de Alerta", options=dias_al)
+            
+            df_al_filtrado = df_alertas_presente[
+                (df_alertas_presente['timestamp'].dt.month_name() == mes_sel_al) & 
+                (df_alertas_presente['timestamp'].dt.day == dia_sel_al)
+            ]
+            
+            st.dataframe(df_al_filtrado.sort_values(by='timestamp', ascending=False), use_container_width=True)
         else:
-            st.info("No hay alarmas.")
+            st.info("No hay alarmas registradas hasta el momento.")
 
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
