@@ -21,12 +21,14 @@ st.markdown("""
 @st.cache_data
 def load_all_data():
     try:
+        # Carga de datos principales
         df_gen = pd.read_csv('datos_domotia_final.csv')
         df_gen.columns = df_gen.columns.str.strip()
         df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp'], errors='coerce')
-        df_gen = df_gen.dropna(subset=['timestamp']) # Limpieza de fechas inválidas
+        df_gen = df_gen.dropna(subset=['timestamp'])
         df_gen['gas_nivel'] = df_gen['gas_nivel'].ffill().fillna(99.9)
 
+        # Carga de historial de alertas
         df_al = pd.read_csv('alertas_historico.csv')
         df_al.columns = df_al.columns.str.strip()
         df_al['timestamp'] = pd.to_datetime(df_al['timestamp'], errors='coerce')
@@ -55,21 +57,32 @@ if not df.empty:
         st.session_state.corriendo = False
         st.rerun()
 
-    # --- ALARMAS SIN REPETICIÓN (Sidebar) ---
+    # --- SIDEBAR: ALERTAS ÚNICAS POR DÍA ---
     st.sidebar.divider()
-    st.sidebar.subheader("🔔 Alertas Recientes (24h)")
-    un_dia_atras = t_actual - timedelta(days=1)
-    alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= un_dia_atras)].copy()
+    st.sidebar.subheader("🔔 Alertas Recientes")
+    
+    # Filtramos alertas hasta el tiempo actual de simulación
+    alertas_vistas = df_alertas[df_alertas['timestamp'] <= t_actual].copy()
 
-    if not alertas_24h.empty:
-        # CORRECCIÓN: Agrupar por hora de forma más compatible
-        alertas_24h['hora_bloque'] = alertas_24h['timestamp'].dt.strftime('%Y-%m-%d %H:00:00')
-        alertas_unicas = alertas_24h.sort_values('timestamp', ascending=False).drop_duplicates(subset=['hora_bloque', 'tipo_anomalia_real'])
+    if not alertas_vistas.empty:
+        # CRUCIAL: Creamos una columna solo con la FECHA (sin hora)
+        alertas_vistas['solo_fecha'] = alertas_vistas['timestamp'].dt.date
         
-        for _, row in alertas_unicas.iterrows():
+        # Eliminamos duplicados: Solo una alerta por TIPO y por DÍA
+        # Mantenemos la primera que ocurrió en el día (.drop_duplicates por defecto guarda la primera)
+        alertas_unicas_dia = alertas_vistas.sort_values('timestamp', ascending=True).drop_duplicates(subset=['solo_fecha', 'tipo_anomalia_real'])
+        
+        # Mostramos las alertas (ordenadas por la más reciente arriba)
+        for _, row in alertas_unicas_dia.sort_values('timestamp', ascending=False).iterrows():
             tipo = str(row.get('tipo_anomalia_real', '')).lower()
             clase = "falla-gas" if "gas" in tipo else "falla-agua" if "agua" in tipo else "falla-luz"
-            st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%H:%M')}</small> - <span class='{clase}'>⚠️ {row['mensaje'].upper()}</span></div>", unsafe_allow_html=True)
+            
+            st.sidebar.markdown(f"""
+                <div class='bitacora-item'>
+                    <small>{row['timestamp'].strftime('%d/%m %H:%M')}</small><br>
+                    <span class='{clase}'>⚠️ {row['mensaje'].upper()}</span>
+                </div>
+            """, unsafe_allow_html=True)
 
     # --- CONTENEDOR PRINCIPAL ---
     main_view = st.empty()
@@ -103,7 +116,7 @@ if not df.empty:
                 st.session_state.vista_actual = "alarmas"; st.rerun()
 
         elif st.session_state.vista_actual == "datos":
-            st.subheader("🔍 Historial de Consumo (Anomalías en Rojo)")
+            st.subheader("🔍 Historial de Consumo")
             if st.button("⬅️ Volver", key="back_v1"): st.session_state.vista_actual = "principal"; st.rerun()
             
             df_v = df[df['timestamp'] <= t_actual].copy()
@@ -112,9 +125,9 @@ if not df.empty:
             st.dataframe(df_v.tail(100).style.apply(color_anomalia, axis=1), use_container_width=True)
 
         elif st.session_state.vista_actual == "alarmas":
-            st.subheader("📜 Registro de Alarmas")
+            st.subheader("📜 Registro Completo de Alarmas")
             if st.button("⬅️ Volver", key="back_v2"): st.session_state.vista_actual = "principal"; st.rerun()
-            st.table(df_alertas[df_alertas['timestamp'] <= t_actual].tail(20))
+            st.table(df_alertas[df_alertas['timestamp'] <= t_actual].tail(30))
 
     # Motor de Simulación
     if st.session_state.corriendo and idx < len(df) - 1 and st.session_state.vista_actual == "principal":
