@@ -17,18 +17,20 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Carga de Datos (Nombres ajustados según tu imagen)
+# 3. Carga de Datos
 @st.cache_data
 def load_all_data():
     try:
         df_gen = pd.read_csv('datos_domotia_final.csv')
         df_gen.columns = df_gen.columns.str.strip()
-        df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp'])
+        df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp'], errors='coerce')
+        df_gen = df_gen.dropna(subset=['timestamp']) # Limpieza de fechas inválidas
         df_gen['gas_nivel'] = df_gen['gas_nivel'].ffill().fillna(99.9)
 
         df_al = pd.read_csv('alertas_historico.csv')
         df_al.columns = df_al.columns.str.strip()
-        df_al['timestamp'] = pd.to_datetime(df_al['timestamp'])
+        df_al['timestamp'] = pd.to_datetime(df_al['timestamp'], errors='coerce')
+        df_al = df_al.dropna(subset=['timestamp'])
         return df_gen, df_al
     except Exception as e:
         st.error(f"Error al cargar archivos: {e}")
@@ -46,9 +48,9 @@ if not df.empty:
 
     # --- SIDEBAR ---
     st.sidebar.title("🕹️ Panel de Control")
-    if st.sidebar.button("▶️ Iniciar / ⏸️ Pausar"):
+    if st.sidebar.button("▶️ Iniciar / ⏸️ Pausar", key="play_btn"):
         st.session_state.corriendo = not st.session_state.corriendo
-    if st.sidebar.button("🔄 Reiniciar Simulación"):
+    if st.sidebar.button("🔄 Reiniciar Simulación", key="reset_btn"):
         st.session_state.indice = 0
         st.session_state.corriendo = False
         st.rerun()
@@ -60,8 +62,8 @@ if not df.empty:
     alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= un_dia_atras)].copy()
 
     if not alertas_24h.empty:
-        # Agrupar por hora para que no se repitan alarmas de gas constantes
-        alertas_24h['hora_bloque'] = alertas_24h['timestamp'].dt.floor('H')
+        # CORRECCIÓN: Agrupar por hora de forma más compatible
+        alertas_24h['hora_bloque'] = alertas_24h['timestamp'].dt.strftime('%Y-%m-%d %H:00:00')
         alertas_unicas = alertas_24h.sort_values('timestamp', ascending=False).drop_duplicates(subset=['hora_bloque', 'tipo_anomalia_real'])
         
         for _, row in alertas_unicas.iterrows():
@@ -69,7 +71,7 @@ if not df.empty:
             clase = "falla-gas" if "gas" in tipo else "falla-agua" if "agua" in tipo else "falla-luz"
             st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%H:%M')}</small> - <span class='{clase}'>⚠️ {row['mensaje'].upper()}</span></div>", unsafe_allow_html=True)
 
-    # --- CONTENEDOR PRINCIPAL (Evita duplicados) ---
+    # --- CONTENEDOR PRINCIPAL ---
     main_view = st.empty()
 
     with main_view.container():
@@ -95,24 +97,24 @@ if not df.empty:
 
             st.divider()
             c1, c2 = st.columns(2)
-            if c1.button("📊 Ver Datos Almacenados", use_container_width=True, key="btn_dt"):
+            if c1.button("📊 Ver Datos Almacenados", use_container_width=True, key="nav_dt"):
                 st.session_state.vista_actual = "datos"; st.rerun()
-            if c2.button("📜 Ver Historial de Alarmas", use_container_width=True, key="btn_al"):
+            if c2.button("📜 Ver Historial de Alarmas", use_container_width=True, key="nav_al"):
                 st.session_state.vista_actual = "alarmas"; st.rerun()
 
         elif st.session_state.vista_actual == "datos":
-            st.subheader("🔍 Historial de Consumo (Fallas en Rojo)")
-            if st.button("⬅️ Volver", key="v1"): st.session_state.vista_actual = "principal"; st.rerun()
+            st.subheader("🔍 Historial de Consumo (Anomalías en Rojo)")
+            if st.button("⬅️ Volver", key="back_v1"): st.session_state.vista_actual = "principal"; st.rerun()
             
             df_v = df[df['timestamp'] <= t_actual].copy()
             def color_anomalia(row):
-                return ['background-color: #ffcccc' if row.anomalia == True else '' for _ in row]
+                return ['background-color: #ffcccc' if row.get('anomalia') == True else '' for _ in row]
             st.dataframe(df_v.tail(100).style.apply(color_anomalia, axis=1), use_container_width=True)
 
         elif st.session_state.vista_actual == "alarmas":
             st.subheader("📜 Registro de Alarmas")
-            if st.button("⬅️ Volver", key="v2"): st.session_state.vista_actual = "principal"; st.rerun()
-            st.table(df_alertas[df_alertas['timestamp'] <= t_actual])
+            if st.button("⬅️ Volver", key="back_v2"): st.session_state.vista_actual = "principal"; st.rerun()
+            st.table(df_alertas[df_alertas['timestamp'] <= t_actual].tail(20))
 
     # Motor de Simulación
     if st.session_state.corriendo and idx < len(df) - 1 and st.session_state.vista_actual == "principal":
