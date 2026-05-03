@@ -122,7 +122,6 @@ if not df_raw.empty:
         if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
         
         if not df_alertas_presente.empty:
-            # FILTRO POR MES Y DÍA (Modificación solicitada)
             meses_al = df_alertas_presente['timestamp'].dt.month_name().unique()
             mes_sel_al = st.selectbox("Selecciona Mes de Alerta", options=meses_al)
             
@@ -137,6 +136,24 @@ if not df_raw.empty:
             st.dataframe(df_al_filtrado.sort_values(by='timestamp', ascending=False), use_container_width=True)
         else:
             st.info("No hay alarmas registradas hasta el momento.")
+
+    # --- NUEVA SECCIÓN: DIRECTORIO ---
+    elif st.session_state.vista == "directorio":
+        st.header("📇 Directorio de Contactos de Emergencia")
+        if st.button("⬅ Volver"): 
+            st.session_state.vista = "principal"
+            st.rerun()
+        
+        contactos = [
+            {"Nombre": "Soporte Gas LP", "Teléfono": "555-0123", "Relación": "Proveedor"},
+            {"Nombre": "Electricista Confianza", "Teléfono": "555-0987", "Relación": "Mantenimiento"},
+            {"Nombre": "Bomberos Locales", "Teléfono": "911", "Relación": "Emergencia"},
+            {"Nombre": "Administración Condominio", "Teléfono": "555-4433", "Relación": "Administración"}
+        ]
+        
+        st.table(contactos)
+        st.info("💡 Estos contactos están disponibles para respuesta rápida ante alarmas críticas.")
+        st.stop() # Muro de seguridad para evitar ejecución del bucle principal
 
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
@@ -174,9 +191,11 @@ if not df_raw.empty:
             """, unsafe_allow_html=True)
 
         st.markdown("---")
-        n1, n2, _ = st.columns([1, 1, 2])
+        # Ajuste de columnas para incluir el nuevo botón
+        n1, n2, n3 = st.columns([1, 1, 1])
         if n1.button("📊 Historial Datos", use_container_width=True): st.session_state.vista = "datos"; st.rerun()
         if n2.button("🚨 Historial Alarmas", use_container_width=True): st.session_state.vista = "alarmas"; st.rerun()
+        if n3.button("📇 Directorio", use_container_width=True): st.session_state.vista = "directorio"; st.rerun()
 
 # 8. BUCLE
 if st.session_state.corriendo and st.session_state.vista == "principal":
