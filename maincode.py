@@ -115,11 +115,13 @@ with st.sidebar:
     else:
         st.write("Sin alertas registradas.")
 
-# 8. VISTAS
+# 8. VISTAS (Lógica de Navegación Corregida)
 if not df_raw.empty:
     if st.session_state.vista == "datos":
         st.header("📊 Historial de Telemetría")
-        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        if st.button("⬅ Volver"): 
+            st.session_state.vista = "principal"
+            st.rerun()
         meses = df_presente['timestamp'].dt.month_name().unique()
         mes_sel = st.selectbox("Selecciona Mes", options=meses)
         dias = df_presente[df_presente['timestamp'].dt.month_name() == mes_sel]['timestamp'].dt.day.unique()
@@ -129,9 +131,10 @@ if not df_raw.empty:
 
     elif st.session_state.vista == "alarmas":
         st.header("🚨 Histórico de Alarmas")
-        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        if st.button("⬅ Volver"): 
+            st.session_state.vista = "principal"
+            st.rerun()
         
-        # Filtros de Mes y Día para Alarmas
         if not df_alertas_presente.empty:
             meses_al = df_alertas_presente['timestamp'].dt.month_name().unique()
             mes_sel_al = st.selectbox("Selecciona Mes de Alarma", options=meses_al)
@@ -150,7 +153,7 @@ if not df_raw.empty:
         st.header("📞 Directorio de Servicios")
         if st.button("⬅ Volver"): 
             st.session_state.vista = "principal"
-            st.rerun() # Rerun para limpiar la pantalla de los inputs del formulario
+            st.rerun()
         
         col_add, col_list = st.columns([1, 2])
         with col_add:
@@ -221,7 +224,7 @@ if not df_raw.empty:
             st.session_state.vista = "directorio"
             st.rerun()
 
-# 9. BUCLE
+# 9. BUCLE SIMULACIÓN
 if st.session_state.corriendo and st.session_state.vista == "principal":
     if st.session_state.indice < len(df_raw) - 1:
         st.session_state.indice += 1
