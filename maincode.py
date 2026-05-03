@@ -179,7 +179,7 @@ if not df_raw.empty:
                     st.rerun()
             st.stop()
 
-    # --- VISTA: PRINCIPAL ---
+# --- VISTA: PRINCIPAL ---
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
         st.caption(f"Simulación: {t_presente.strftime('%d/%m/%Y %H:%M:%S')}")
@@ -190,6 +190,9 @@ if not df_raw.empty:
         for i, (l, v, f) in enumerate(met):
             with cols[i]: st.markdown(f'<div class="metric-card"><div class="metric-title">{l}</div><div class="metric-value">{f.format(v)}</div></div>', unsafe_allow_html=True)
 
+        # Espacio mínimo entre métricas y gráficas
+        st.write("") 
+        
         c_graf, c_gas = st.columns([4, 0.8])
         ventana = df_presente.tail(30).set_index('timestamp')
         with c_graf:
@@ -206,19 +209,9 @@ if not df_raw.empty:
             v_gas_ui = float(actual_row['gas_nivel'])
             st.markdown(f'<div class="gas-wrapper"><div class="gas-container"><div class="gas-fill" style="height: {v_gas_ui}%;"></div></div><div class="gas-percentage">{v_gas_ui:.1f}%</div></div>', unsafe_allow_html=True)
 
-        # PLAN MAESTRO: Inyectamos CSS que busca el bloque de botones y lo sube a la fuerza
-        st.markdown("""
-            <style>
-                /* Esto busca el contenedor de las columnas de abajo y le quita el espacio muerto */
-                div[data-testid="stVerticalBlock"] > div:has(div[data-testid="stHorizontalBlock"]) {
-                    margin-top: -50px !important;
-                }
-                /* Específicamente para los botones */
-                .stButton {
-                    margin-top: -20px !important;
-                }
-            </style>
-        """, unsafe_allow_html=True)
+        # LA SOLUCIÓN DEFINITIVA: Un bloque invisible con altura negativa
+        # Esto solo afecta a lo que viene DEBAJO de él.
+        st.markdown('<div style="margin-bottom: -45px;"></div>', unsafe_allow_html=True)
 
         n1, n2, n3 = st.columns(3)
         if n1.button("📊 Historial Datos", use_container_width=True): 
