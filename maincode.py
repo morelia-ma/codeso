@@ -6,7 +6,7 @@ from datetime import timedelta
 # 1. Configuración de página
 st.set_page_config(page_title="HMI Fam Montoya", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Estilos CSS
+# 2. Estilos CSS (Sin cambios, pero asegurando aislamiento)
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
@@ -66,7 +66,7 @@ with st.sidebar:
         for msg in alertas_24h['mensaje'].unique()[-4:]:
             st.caption(f"⚠️ {msg}")
 
-# --- LÓGICA DE VISTAS (AISLAMIENTO TOTAL) ---
+# --- LÓGICA DE VISTAS (AISLAMIENTO CRÍTICO) ---
 if not df.empty:
     t_simulacion = df.iloc[st.session_state.indice]['timestamp']
 
@@ -77,42 +77,27 @@ if not df.empty:
             st.session_state.vista = "principal"
             st.rerun()
         
-        st.info("Selecciona el periodo que deseas consultar:")
-        col_f1, col_f2 = st.columns(2)
-        
-        # Filtros de fecha
-        with col_f1:
-            mes_sel = st.selectbox("Seleccionar Mes", options=df['timestamp'].dt.month_name().unique())
-        with col_f2:
-            # Filtrar días disponibles según el mes
-            dias_disponibles = df[df['timestamp'].dt.month_name() == mes_sel]['timestamp'].dt.day.unique()
-            dia_sel = st.selectbox("Seleccionar Día", options=dias_disponibles)
-        
-        # Filtrar DataFrame
-        df_filtrado = df[(df['timestamp'].dt.month_name() == mes_sel) & 
-                         (df['timestamp'].dt.day == dia_sel)]
-        
-        st.write(f"Mostrando datos del **{dia_sel} de {mes_sel}**:")
-        st.dataframe(df_filtrado, use_container_width=True)
+        # Filtros
+        with st.container():
+            st.info("Selecciona el periodo que deseas consultar:")
+            col_f1, col_f2 = st.columns(2)
+            
+            with col_f1:
+                meses = df['timestamp'].dt.month_name().unique()
+                mes_sel = st.selectbox("Seleccionar Mes", options=meses)
+            with col_f2:
+                dias = df[df['timestamp'].dt.month_name() == mes_sel]['timestamp'].dt.day.unique()
+                dia_sel = st.selectbox("Seleccionar Día", options=dias)
+            
+            # Filtrado y visualización
+            df_filtrado = df[(df['timestamp'].dt.month_name() == mes_sel) & 
+                             (df['timestamp'].dt.day == dia_sel)]
+            
+            st.write(f"Mostrando datos del **{dia_sel} de {mes_sel}**:")
+            st.dataframe(df_filtrado, use_container_width=True)
 
-    # --- VISTA: HISTORIAL DE ALARMAS ---
-    elif st.session_state.vista == "alarmas":
-        st.markdown("## 🚨 Histórico de Alertas")
-        if st.button("⬅ Volver al Panel"):
-            st.session_state.vista = "principal"
-            st.rerun()
-        st.dataframe(df_alertas[df_alertas['timestamp'] <= t_simulacion].sort_values('timestamp', ascending=False), use_container_width=True)
-
-    # --- VISTA: DIRECTORIO ---
-    elif st.session_state.vista == "directorio":
-        st.markdown("## 📞 Directorio de Emergencias")
-        if st.button("⬅ Volver al Panel"):
-            st.session_state.vista = "principal"
-            st.rerun()
-        st.table(pd.DataFrame([{"Servicio": "Bomberos", "Tel": "911"}, {"Servicio": "Mantenimiento Gas", "Tel": "01-800-123"}]))
-
-    # --- VISTA: PANEL PRINCIPAL (DEFAULT) ---
-    else:
+    # --- VISTA: PANEL PRINCIPAL (SÓLO AQUÍ VIVE EL GAS) ---
+    elif st.session_state.vista == "principal":
         actual = df.iloc[st.session_state.indice]
         st.markdown(f"## 🏠 Monitoreo: Familia Montoya")
 
@@ -130,7 +115,7 @@ if not df.empty:
 
         st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
 
-        # Fila 2: Gráficas y Gas
+        # Fila 2: Gráficas y Tanque de Gas
         col_graf, col_gas = st.columns([4, 1.2])
         ventana = df.iloc[max(0, st.session_state.indice-30):st.session_state.indice+1].set_index('timestamp')
 
@@ -148,7 +133,7 @@ if not df.empty:
             v_gas = actual['gas_nivel']
             st.markdown(f'<div class="gas-container"><div class="gas-label">{v_gas:.1f}%</div><div class="gas-fill" style="height: {v_gas}%;"></div></div>', unsafe_allow_html=True)
 
-        # Fila 3: Botones de Navegación
+        # Fila 3: Botones
         st.markdown("---")
         b1, b2, b3, b4 = st.columns(4)
         if b1.button("📊 Historial Datos", use_container_width=True):
@@ -163,7 +148,7 @@ if not df.empty:
         b4.button("⚙️ Info General", use_container_width=True, disabled=True)
 
 # Loop de simulación
-if st.session_state.corriendo and st.session_state.indice < len(df) - 1:
+if st.session_state.corriendo and st.session_state.vista == "principal" and st.session_state.indice < len(df) - 1:
     st.session_state.indice += 1
     time.sleep(0.1)
     st.rerun()
