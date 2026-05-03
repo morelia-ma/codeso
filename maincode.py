@@ -3,125 +3,119 @@ import pandas as pd
 import time
 from datetime import timedelta
 
-# 1. Configuración de página y carga de datos
+# 1. Configuración de página
 st.set_page_config(page_title="HMI Domótica CODESO", layout="wide")
 
+# 2. Estilos CSS
+st.markdown("""
+    <style>
+    .stMetric { border-radius: 15px; background-color: #ffffff; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 5px solid #0077B6; }
+    .bitacora-item { padding: 10px; border-bottom: 1px solid #eee; font-size: 0.85rem; }
+    .falla-agua { color: #0077B6; font-weight: bold; }
+    .falla-luz { color: #E67E22; font-weight: bold; }
+    .falla-gas { color: #E74C3C; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 3. Carga de Datos (Nombres ajustados según tu imagen)
 @st.cache_data
 def load_all_data():
-    # Asegúrate de que los nombres de archivos coincidan con tus archivos locales
-    df_gen = pd.read_csv('datos_domotia_final_2.csv')
-    df_gen.columns = df_gen.columns.str.strip()
-    df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp'])
-    
     try:
-        df_al = pd.read_csv('alertas_historico_2.csv')
+        df_gen = pd.read_csv('datos_domotia_final.csv')
+        df_gen.columns = df_gen.columns.str.strip()
+        df_gen['timestamp'] = pd.to_datetime(df_gen['timestamp'])
+        df_gen['gas_nivel'] = df_gen['gas_nivel'].ffill().fillna(99.9)
+
+        df_al = pd.read_csv('alertas_historico.csv')
         df_al.columns = df_al.columns.str.strip()
         df_al['timestamp'] = pd.to_datetime(df_al['timestamp'])
-    except:
-        df_al = pd.DataFrame(columns=['timestamp', 'mensaje', 'tipo_anomalia_real', 'valor'])
-    
-    return df_gen, df_al
+        return df_gen, df_al
+    except Exception as e:
+        st.error(f"Error al cargar archivos: {e}")
+        return pd.DataFrame(), pd.DataFrame()
 
 df, df_alertas = load_all_data()
 
-# 2. Inicialización de Estado
+# 4. Estado de la Sesión
 if 'indice' not in st.session_state: st.session_state.indice = 0
 if 'corriendo' not in st.session_state: st.session_state.corriendo = False
 if 'vista_actual' not in st.session_state: st.session_state.vista_actual = "principal"
 
-t_actual = df.iloc[st.session_state.indice]['timestamp']
+if not df.empty:
+    t_actual = df.iloc[st.session_state.indice]['timestamp']
 
-# --- SIDEBAR: PANEL DE CONTROL ---
-st.sidebar.title("🕹️ Panel de Control")
-if st.sidebar.button("▶️ Iniciar / ⏸️ Pausar"):
-    st.session_state.corriendo = not st.session_state.corriendo
+    # --- SIDEBAR ---
+    st.sidebar.title("🕹️ Panel de Control")
+    if st.sidebar.button("▶️ Iniciar / ⏸️ Pausar"):
+        st.session_state.corriendo = not st.session_state.corriendo
+    if st.sidebar.button("🔄 Reiniciar Simulación"):
+        st.session_state.indice = 0
+        st.session_state.corriendo = False
+        st.rerun()
 
-if st.sidebar.button("🔄 Reiniciar Simulación"):
-    st.session_state.indice = 0
-    st.session_state.corriendo = False
-    st.rerun()
+    # --- ALARMAS SIN REPETICIÓN (Sidebar) ---
+    st.sidebar.divider()
+    st.sidebar.subheader("🔔 Alertas Recientes (24h)")
+    un_dia_atras = t_actual - timedelta(days=1)
+    alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= un_dia_atras)].copy()
 
-# --- SIDEBAR: LÓGICA DE ALARMAS NO REPETITIVAS ---
-st.sidebar.divider()
-st.sidebar.subheader("🔔 Alertas Recientes (24h)")
-un_dia_atras = t_actual - timedelta(days=1)
-
-# Filtramos alertas de las últimas 24h
-alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_actual) & (df_alertas['timestamp'] >= un_dia_atras)].copy()
-
-if not alertas_24h.empty:
-    # Agrupamos por día y tipo para evitar repeticiones visuales de gas
-    # Solo tomamos la alarma con el valor más alto por cada hora para evitar saturación de 30 min
-    alertas_24h['fecha_hora'] = alertas_24h['timestamp'].dt.floor('H')
-    alertas_filtradas = alertas_24h.sort_values('valor', ascending=False).drop_duplicates(subset=['fecha_hora', 'tipo_anomalia_real'])
-    
-    for _, row in alertas_filtradas.sort_values('timestamp', ascending=False).iterrows():
-        tipo = str(row.get('tipo_anomalia_real', '')).lower()
-        msj = str(row.get('mensaje', '')).upper()
+    if not alertas_24h.empty:
+        # Agrupar por hora para que no se repitan alarmas de gas constantes
+        alertas_24h['hora_bloque'] = alertas_24h['timestamp'].dt.floor('H')
+        alertas_unicas = alertas_24h.sort_values('timestamp', ascending=False).drop_duplicates(subset=['hora_bloque', 'tipo_anomalia_real'])
         
-        # Estilo según tipo
-        clase = "falla-gas" if "gas" in tipo else "falla-agua" if "agua" in tipo else "falla-luz"
-        icono = "🔥" if "gas" in tipo else "💧" if "agua" in tipo else "⚡"
-        
-        st.sidebar.markdown(f"""
-            <div class='bitacora-item'>
-                <small>{row['timestamp'].strftime('%H:%M')}</small> - <span class='{clase}'>⚠️ {msj}</span>
-            </div>
-        """, unsafe_allow_html=True)
+        for _, row in alertas_unicas.iterrows():
+            tipo = str(row.get('tipo_anomalia_real', '')).lower()
+            clase = "falla-gas" if "gas" in tipo else "falla-agua" if "agua" in tipo else "falla-luz"
+            st.sidebar.markdown(f"<div class='bitacora-item'><small>{row['timestamp'].strftime('%H:%M')}</small> - <span class='{clase}'>⚠️ {row['mensaje'].upper()}</span></div>", unsafe_allow_html=True)
 
-# --- ÁREA DE TRABAJO PRINCIPAL (Usando st.empty para evitar duplicados) ---
-placeholder = st.empty()
+    # --- CONTENEDOR PRINCIPAL (Evita duplicados) ---
+    main_view = st.empty()
 
-with placeholder.container():
-    if st.session_state.vista_actual == "principal":
-        st.title("🏠 Dashboard CODESO Smart Home")
-        
-        # KPIs y Gráficas (Tu lógica actual de visualización)
+    with main_view.container():
         idx = st.session_state.indice
         actual = df.iloc[idx]
-        
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}")
-        k2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}")
-        k3.metric("GAS % 🔥", f"{actual['gas_nivel']:.1f}%")
-        k4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
-        st.divider()
-        
-        # Gráficas
-        ventana = df.iloc[max(0, idx-50):idx+1]
-        g1, g2 = st.columns(2)
-        with g1: st.area_chart(ventana.set_index('timestamp')['consumo_agua'], color="#0077B6")
-        with g2: st.line_chart(ventana.set_index('timestamp')['consumo_electrico'], color="#FFB703")
+        if st.session_state.vista_actual == "principal":
+            st.title("🏠 Dashboard CODESO Smart Home")
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("AGUA (L) 💧", f"{actual['consumo_agua']:.1f}")
+            k2.metric("ENERGÍA (kWh) ⚡", f"{actual['consumo_electrico']:.3f}")
+            k3.metric("GAS % 🔥", f"{actual['gas_nivel']:.1f}%")
+            k4.metric("TEMP. INT 🌡️", f"{actual['temperatura_int']:.1f} °C")
 
-        st.divider()
-        
-        # BOTONES DE NAVEGACIÓN (Solo una vez)
-        c_nav1, c_nav2 = st.columns(2)
-        if c_nav1.button("📊 Ver Datos de Consumo Almacenados", use_container_width=True):
-            st.session_state.vista_actual = "datos"
-            st.rerun()
-        if c_nav2.button("📜 Ver Historial de Alarmas", use_container_width=True):
-            st.session_state.vista_actual = "alarmas"
-            st.rerun()
+            if actual['consumo_electrico'] > 4.0:
+                st.error(f"🚨 PICO ELÉCTRICO DETECTADO: {actual['consumo_electrico']} kWh")
 
-    elif st.session_state.vista_actual == "datos":
-        st.subheader("🔍 Explorador de Consumo Histórico")
-        if st.button("⬅️ Volver al Panel"):
-            st.session_state.vista_actual = "principal"
-            st.rerun()
-        # (Aquí va tu tabla de datos con estilo rojo)
-        st.dataframe(df[df['timestamp'] <= t_actual].tail(100), use_container_width=True)
+            st.divider()
+            ventana = df.iloc[max(0, idx-50):idx+1]
+            g1, g2 = st.columns(2)
+            with g1: st.area_chart(ventana.set_index('timestamp')['consumo_agua'], color="#0077B6")
+            with g2: st.line_chart(ventana.set_index('timestamp')['consumo_electrico'], color="#FFB703")
 
-    elif st.session_state.vista_actual == "alarmas":
-        st.subheader("📜 Historial de Alarmas Registradas")
-        if st.button("⬅️ Volver al Panel"):
-            st.session_state.vista_actual = "principal"
-            st.rerun()
-        st.table(df_alertas[df_alertas['timestamp'] <= t_actual])
+            st.divider()
+            c1, c2 = st.columns(2)
+            if c1.button("📊 Ver Datos Almacenados", use_container_width=True, key="btn_dt"):
+                st.session_state.vista_actual = "datos"; st.rerun()
+            if c2.button("📜 Ver Historial de Alarmas", use_container_width=True, key="btn_al"):
+                st.session_state.vista_actual = "alarmas"; st.rerun()
 
-# --- MOTOR DE SIMULACIÓN ---
-if st.session_state.corriendo and st.session_state.indice < len(df) - 1:
-    st.session_state.indice += 1
-    time.sleep(0.1) # Ajusta la velocidad aquí
-    st.rerun()
+        elif st.session_state.vista_actual == "datos":
+            st.subheader("🔍 Historial de Consumo (Fallas en Rojo)")
+            if st.button("⬅️ Volver", key="v1"): st.session_state.vista_actual = "principal"; st.rerun()
+            
+            df_v = df[df['timestamp'] <= t_actual].copy()
+            def color_anomalia(row):
+                return ['background-color: #ffcccc' if row.anomalia == True else '' for _ in row]
+            st.dataframe(df_v.tail(100).style.apply(color_anomalia, axis=1), use_container_width=True)
+
+        elif st.session_state.vista_actual == "alarmas":
+            st.subheader("📜 Registro de Alarmas")
+            if st.button("⬅️ Volver", key="v2"): st.session_state.vista_actual = "principal"; st.rerun()
+            st.table(df_alertas[df_alertas['timestamp'] <= t_actual])
+
+    # Motor de Simulación
+    if st.session_state.corriendo and idx < len(df) - 1 and st.session_state.vista_actual == "principal":
+        st.session_state.indice += 1
+        time.sleep(0.1)
+        st.rerun()
