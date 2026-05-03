@@ -188,7 +188,7 @@ if not df_raw.empty:
         for i, (l, v, f) in enumerate(met):
             with cols[i]: st.markdown(f'<div class="metric-card"><div class="metric-title">{l}</div><div class="metric-value">{f.format(v)}</div></div>', unsafe_allow_html=True)
 
-        # Aquí quitamos el spacer y el separador que hacían el hueco grande
+        # Quitamos el separador y el spacer para ahorrar espacio
         
         c_graf, c_gas = st.columns([4, 0.8])
         ventana = df_presente.tail(30).set_index('timestamp')
@@ -206,7 +206,7 @@ if not df_raw.empty:
             v_gas_ui = float(actual_row['gas_nivel'])
             st.markdown(f'<div class="gas-wrapper"><div class="gas-container"><div class="gas-fill" style="height: {v_gas_ui}%;"></div></div><div class="gas-percentage">{v_gas_ui:.1f}%</div></div>', unsafe_allow_html=True)
 
-        # Solo un ajuste mínimo de margen para que respiren pero no se alejen
+        # Ajuste de margen pequeño para acercar los botones
         st.markdown('<div style="margin-top: -15px;"></div>', unsafe_allow_html=True)
 
         n1, n2, n3 = st.columns(3)
