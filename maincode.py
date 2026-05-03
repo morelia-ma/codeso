@@ -149,7 +149,6 @@ if not df_raw.empty:
         def gestionar_contactos():
             if os.path.exists('directorio_personal.csv'):
                 return pd.read_csv('directorio_personal.csv')
-            # Contactos iniciales si el archivo no existe
             data_inicial = [
                 {"Nombre": "Soporte Gas LP", "Teléfono": "555-0123", "Relación": "Proveedor"},
                 {"Nombre": "Electricista Confianza", "Teléfono": "555-0987", "Relación": "Mantenimiento"},
@@ -177,11 +176,23 @@ if not df_raw.empty:
                 else:
                     st.error("Por favor llena Nombre y Teléfono.")
 
+        # --- SECCIÓN PARA ELIMINAR CONTACTOS ---
         st.markdown("---")
+        with st.expander("🗑️ Gestionar / Eliminar Contactos"):
+            contactos_a_eliminar = st.multiselect("Selecciona contactos para eliminar:", options=df_contactos['Nombre'].tolist())
+            if st.button("Eliminar Seleccionados", type="primary"):
+                if contactos_a_eliminar:
+                    df_contactos = df_contactos[~df_contactos['Nombre'].isin(contactos_a_eliminar)]
+                    df_contactos.to_csv('directorio_personal.csv', index=False)
+                    st.warning(f"Se eliminaron {len(contactos_a_eliminar)} contactos.")
+                    st.rerun()
+                else:
+                    st.info("No has seleccionado ningún contacto.")
+
         st.subheader("📋 Lista de Contactos")
         st.dataframe(df_contactos, use_container_width=True)
         st.info("💡 Estos contactos están disponibles para respuesta rápida ante alarmas críticas.")
-        st.stop() # Muro de seguridad
+        st.stop() 
 
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
