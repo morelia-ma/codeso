@@ -44,7 +44,6 @@ def cargar_directorio():
     if os.path.exists('directorio.csv'):
         return pd.read_csv('directorio.csv')
     else:
-        # Contactos por defecto
         df_ini = pd.DataFrame({"Servicio": ["Emergencias", "Fugas Gas", "Agua"], "Número": ["911", "800-GAS-LINE", "555-0102"]})
         df_ini.to_csv('directorio.csv', index=False)
         return df_ini
@@ -131,17 +130,29 @@ if not df_raw.empty:
     elif st.session_state.vista == "alarmas":
         st.header("🚨 Histórico de Alarmas")
         if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        
+        # Filtros de Mes y Día para Alarmas
         if not df_alertas_presente.empty:
-            st.table(df_alertas_presente.sort_values(by='timestamp', ascending=False).head(20))
+            meses_al = df_alertas_presente['timestamp'].dt.month_name().unique()
+            mes_sel_al = st.selectbox("Selecciona Mes de Alarma", options=meses_al)
+            dias_al = df_alertas_presente[df_alertas_presente['timestamp'].dt.month_name() == mes_sel_al]['timestamp'].dt.day.unique()
+            dia_sel_al = st.selectbox("Selecciona Día de Alarma", options=dias_al)
+            
+            df_al_filtrado = df_alertas_presente[
+                (df_alertas_presente['timestamp'].dt.month_name() == mes_sel_al) & 
+                (df_alertas_presente['timestamp'].dt.day == dia_sel_al)
+            ]
+            st.table(df_al_filtrado.sort_values(by='timestamp', ascending=False))
         else:
-            st.info("No hay alarmas registradas hasta este punto de la simulación.")
+            st.info("No hay alarmas registradas.")
 
     elif st.session_state.vista == "directorio":
         st.header("📞 Directorio de Servicios")
-        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
+        if st.button("⬅ Volver"): 
+            st.session_state.vista = "principal"
+            st.rerun() # Rerun para limpiar la pantalla de los inputs del formulario
         
         col_add, col_list = st.columns([1, 2])
-        
         with col_add:
             st.subheader("Añadir Contacto")
             with st.form("nuevo_contacto", clear_on_submit=True):
@@ -199,7 +210,6 @@ if not df_raw.empty:
             """, unsafe_allow_html=True)
 
         st.markdown("---")
-        # BOTONES DE NAVEGACIÓN (Reparados)
         n1, n2, n3, _ = st.columns([1, 1, 1, 1])
         if n1.button("📊 Historial Datos", use_container_width=True): 
             st.session_state.vista = "datos"
@@ -211,7 +221,7 @@ if not df_raw.empty:
             st.session_state.vista = "directorio"
             st.rerun()
 
-# 9. BUCLE DE SIMULACIÓN
+# 9. BUCLE
 if st.session_state.corriendo and st.session_state.vista == "principal":
     if st.session_state.indice < len(df_raw) - 1:
         st.session_state.indice += 1
