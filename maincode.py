@@ -70,7 +70,7 @@ if 'indice' not in st.session_state: st.session_state.indice = 0
 if 'corriendo' not in st.session_state: st.session_state.corriendo = False
 if 'vista_actual' not in st.session_state: st.session_state.vista_actual = "principal"
 
-# --- SIDEBAR ---
+# --- SIDEBAR (Bloque corregido) ---
 with st.sidebar:
     st.title("🕹️ Panel de Control")
     if st.button("▶️ Iniciar / ⏸️ Pausar", use_container_width=True):
@@ -82,12 +82,19 @@ with st.sidebar:
     st.divider()
     st.subheader("🔔 Estado de Suministros")
     
-    # Lógica de Predicción Proactiva
+    # Lógica de Predicción Proactiva BLINDADA
     gas_actual = df.iloc[st.session_state.indice]['gas_nivel']
-    dias_est = int(gas_actual / 1.5) # Simulación de consumo proactivo
     
-    if dias_est <= 15:
-        st.warning(f"Suministro de Gas: aprox. {dias_est} días restantes.")
+    # Verificamos que sea un número válido antes de calcular
+    if pd.notnull(gas_actual) and isinstance(gas_actual, (int, float)):
+        try:
+            dias_est = int(float(gas_actual) / 1.5)
+            if dias_est <= 15:
+                st.warning(f"Suministro de Gas: aprox. {dias_est} días restantes.")
+        except (ValueError, ZeroDivisionError):
+            pass # Si falla el cálculo, no mostramos nada y evitamos el crash
+    else:
+        st.info("Calculando autonomía de gas...")
 
 # --- CUERPO PRINCIPAL ---
 if not df.empty:
