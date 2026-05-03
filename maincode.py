@@ -196,10 +196,10 @@ if not df_raw.empty:
             g1, g2 = st.columns(2)
             with g1: 
                 st.caption("📈 Histórico Reciente: Agua")
-                st.area_chart(ventana['consumo_agua'], height=500)
+                st.area_chart(ventana['consumo_agua'], height=250)
             with g2: 
                 st.caption("📈 Histórico Reciente: Energía")
-                st.line_chart(ventana['consumo_electrico'], height=500, color="#FFB703")
+                st.line_chart(ventana['consumo_electrico'], height=250, color="#FFB703")
         
         with c_gas:
             st.caption("⛽ Nivel de Gas")
