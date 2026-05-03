@@ -106,6 +106,7 @@ with st.sidebar:
         st.write("Sin alertas registradas.")
 
 # 7. VISTAS
+# 7. VISTAS
 if not df_raw.empty:
     if st.session_state.vista == "datos":
         st.header("📊 Historial de Telemetría")
@@ -137,7 +138,7 @@ if not df_raw.empty:
         else:
             st.info("No hay alarmas registradas hasta el momento.")
 
-    # --- SECCIÓN: DIRECTORIO DINÁMICO (ORDEN MODIFICADO) ---
+    # --- SECCIÓN: DIRECTORIO DINÁMICO ---
     elif st.session_state.vista == "directorio":
         st.header("📇 Directorio de Contactos de Emergencia")
         if st.button("⬅ Volver"): 
@@ -157,14 +158,14 @@ if not df_raw.empty:
 
         df_contactos = gestionar_contactos()
 
-        # 1. LISTA DE CONTACTOS (PRIMERO)
+        # 1. LISTA DE CONTACTOS
         st.subheader("📋 Lista de Contactos")
         st.dataframe(df_contactos, use_container_width=True)
         st.info("💡 Estos contactos están disponibles para respuesta rápida ante alarmas críticas.")
 
         st.markdown("---")
 
-        # 2. AÑADIR CONTACTOS (DESPUÉS)
+        # 2. AÑADIR CONTACTOS
         with st.form("nuevo_contacto", clear_on_submit=True):
             st.subheader("➕ Agregar Nuevo Contacto")
             col_n, col_t, col_r = st.columns(3)
@@ -182,7 +183,7 @@ if not df_raw.empty:
                 else:
                     st.error("Por favor llena Nombre y Teléfono.")
 
-        # 3. ELIMINAR CONTACTOS (AL FINAL)
+        # 3. ELIMINAR CONTACTOS
         with st.expander("🗑️ Gestionar / Eliminar Contactos"):
             contactos_a_eliminar = st.multiselect("Selecciona contactos para eliminar:", options=df_contactos['Nombre'].tolist())
             if st.button("Eliminar Seleccionados", type="primary"):
@@ -194,8 +195,9 @@ if not df_raw.empty:
                 else:
                     st.info("No has seleccionado ningún contacto.")
         
-        st.stop() 
+        st.stop() # Esto asegura que no se renderice nada más hacia abajo si estamos en esta vista
 
+    # --- VISTA PRINCIPAL ---
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
         st.caption(f"Simulación: {t_presente.strftime('%d/%m/%Y %H:%M:%S')}")
