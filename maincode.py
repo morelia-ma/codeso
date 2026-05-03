@@ -207,9 +207,10 @@ if not df_raw.empty:
             st.caption("⛽ Nivel de Gas")
             v_gas_ui = float(actual_row['gas_nivel'])
             st.markdown(f'<div class="gas-wrapper"><div class="gas-container"><div class="gas-fill" style="height: {v_gas_ui}%;"></div></div><div class="gas-percentage">{v_gas_ui:.1f}%</div></div>', unsafe_allow_html=True)
-
-# Reemplaza tu línea de margen por esta:
+            # Reemplaza tu línea de margen por esta:
 st.markdown('<div style="position: relative; top: -60px;"></div>', unsafe_allow_html=True)
+
+
 
         n1, n2, n3 = st.columns(3)
         if n1.button("📊 Historial Datos", use_container_width=True): 
