@@ -69,7 +69,7 @@ if not df_raw.empty:
     df_presente = df_raw[df_raw['timestamp'] <= t_presente]
     df_alertas_presente = df_alertas_raw[df_alertas_raw['timestamp'] <= t_presente]
 
-# 6. BARRA LATERAL (CONTROL)
+# --- 6. BARRA LATERAL (CONTROL) ---
 with st.sidebar:
     st.header("🎮 Control de Simulación")
     col_btn1, col_btn2 = st.columns(2)
@@ -81,14 +81,21 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("🔔 Últimas Alertas")
+    
     if not df_alertas_presente.empty:
-        # Mostrar alertas de las últimas 24 horas simuladas
+        # Filtramos alertas de las últimas 24 horas simuladas
         ultimas_24h = df_alertas_presente[df_alertas_presente['timestamp'] >= t_presente - timedelta(hours=24)]
+        
         if not ultimas_24h.empty:
+            # SI HAY ALERTAS: Las mostramos
             for _, fila in ultimas_24h.tail(3).iterrows():
                 st.caption(f"🕒 {fila['timestamp'].strftime('%H:%M')} - {fila['mensaje']}")
         else:
-            st.write("Sin alertas recientes.")
+            # SI EL DATAFRAME EXISTE PERO NO HAY NADA EN LAS ÚLTIMAS 24H
+            st.write("Sin alertas en las últimas 24h.")
+    else:
+        # SI EL DATAFRAME ESTÁ TOTALMENTE VACÍO
+        st.write("Sin alertas registradas.")
 
 # 7. NAVEGACIÓN Y VISTAS
 if not df_raw.empty:
