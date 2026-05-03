@@ -6,7 +6,7 @@ from datetime import timedelta
 # 1. Configuración de página
 st.set_page_config(page_title="HMI Fam Montoya", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Estilos CSS (Sin cambios, pero asegurando aislamiento)
+# 2. Estilos CSS
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
@@ -47,6 +47,11 @@ if 'indice' not in st.session_state: st.session_state.indice = 0
 if 'corriendo' not in st.session_state: st.session_state.corriendo = False
 if 'vista' not in st.session_state: st.session_state.vista = "principal"
 
+# --- LÓGICA DE TIEMPO REAL ---
+if not df.empty:
+    # Definimos el "presente" de la simulación
+    t_presente = df.iloc[st.session_state.indice]['timestamp']
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("🎮 Simulación")
@@ -60,43 +65,45 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🔔 Alertas (24h)")
     if not df.empty:
-        t_actual = df.iloc[st.session_state.indice]['timestamp']
-        alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_actual) & 
-                                 (df_alertas['timestamp'] >= t_actual - timedelta(hours=24))]
+        alertas_24h = df_alertas[(df_alertas['timestamp'] <= t_presente) & 
+                                 (df_alertas['timestamp'] >= t_presente - timedelta(hours=24))]
         for msg in alertas_24h['mensaje'].unique()[-4:]:
             st.caption(f"⚠️ {msg}")
 
-# --- LÓGICA DE VISTAS (AISLAMIENTO CRÍTICO) ---
+# --- VISTAS ---
 if not df.empty:
-    t_simulacion = df.iloc[st.session_state.indice]['timestamp']
-
-    # --- VISTA: HISTORIAL DE DATOS ---
+    
+    # --- VISTA: HISTORIAL DE DATOS (CON FILTRO DE TIEMPO REAL) ---
     if st.session_state.vista == "datos":
         st.markdown("## 📊 Historial de Consumo")
         if st.button("⬅ Volver al Panel"):
             st.session_state.vista = "principal"
             st.rerun()
         
-        # Filtros
+        # Filtramos el dataframe original para que solo existan datos hasta el "presente"
+        df_hasta_ahora = df[df['timestamp'] <= t_presente]
+        
         with st.container():
-            st.info("Selecciona el periodo que deseas consultar:")
+            st.info(f"Consulta datos registrados hasta: **{t_presente.strftime('%d/%m/%Y %H:%M')}**")
             col_f1, col_f2 = st.columns(2)
             
             with col_f1:
-                meses = df['timestamp'].dt.month_name().unique()
-                mes_sel = st.selectbox("Seleccionar Mes", options=meses)
+                # Solo meses que ya ocurrieron
+                meses_disponibles = df_hasta_ahora['timestamp'].dt.month_name().unique()
+                mes_sel = st.selectbox("Seleccionar Mes", options=meses_disponibles)
+            
             with col_f2:
-                dias = df[df['timestamp'].dt.month_name() == mes_sel]['timestamp'].dt.day.unique()
-                dia_sel = st.selectbox("Seleccionar Día", options=dias)
+                # Solo días de ese mes que ya ocurrieron
+                dias_disponibles = df_hasta_ahora[df_hasta_ahora['timestamp'].dt.month_name() == mes_sel]['timestamp'].dt.day.unique()
+                dia_sel = st.selectbox("Seleccionar Día", options=dias_disponibles)
             
-            # Filtrado y visualización
-            df_filtrado = df[(df['timestamp'].dt.month_name() == mes_sel) & 
-                             (df['timestamp'].dt.day == dia_sel)]
+            df_filtrado = df_hasta_ahora[(df_hasta_ahora['timestamp'].dt.month_name() == mes_sel) & 
+                                        (df_hasta_ahora['timestamp'].dt.day == dia_sel)]
             
-            st.write(f"Mostrando datos del **{dia_sel} de {mes_sel}**:")
+            st.write(f"Mostrando registros del **{dia_sel} de {mes_sel}**:")
             st.dataframe(df_filtrado, use_container_width=True)
 
-    # --- VISTA: PANEL PRINCIPAL (SÓLO AQUÍ VIVE EL GAS) ---
+    # --- VISTA: PANEL PRINCIPAL ---
     elif st.session_state.vista == "principal":
         actual = df.iloc[st.session_state.indice]
         st.markdown(f"## 🏠 Monitoreo: Familia Montoya")
@@ -115,7 +122,7 @@ if not df.empty:
 
         st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
 
-        # Fila 2: Gráficas y Tanque de Gas
+        # Fila 2: Gráficas y Gas
         col_graf, col_gas = st.columns([4, 1.2])
         ventana = df.iloc[max(0, st.session_state.indice-30):st.session_state.indice+1].set_index('timestamp')
 
@@ -147,7 +154,7 @@ if not df.empty:
             st.rerun()
         b4.button("⚙️ Info General", use_container_width=True, disabled=True)
 
-# Loop de simulación
+# Loop
 if st.session_state.corriendo and st.session_state.vista == "principal" and st.session_state.indice < len(df) - 1:
     st.session_state.indice += 1
     time.sleep(0.1)
