@@ -6,11 +6,13 @@ from datetime import timedelta
 # 1. Configuración de página
 st.set_page_config(page_title="HMI Fam Montoya", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Estilos CSS
+# 2. Estilos CSS (Actualizado para tanque más delgado)
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
     .spacer { margin-top: 30px; }
+    
+    /* Tarjetas de indicadores */
     .metric-card {
         background-color: white; border-radius: 10px; padding: 12px 18px;
         border-left: 5px solid #0077B6; box-shadow: 2px 2px 8px rgba(0,0,0,0.08);
@@ -18,12 +20,36 @@ st.markdown("""
     }
     .metric-title { font-size: 0.75rem; font-weight: bold; color: #666; text-transform: uppercase; }
     .metric-value { font-size: 1.9rem; font-weight: 500; color: #1f2d3d; }
-    .gas-container {
-        height: 200px; width: 100%; background-color: #f0f2f6;
-        border-radius: 10px; position: relative; border: 1px solid #ddd;
+    
+    /* Tanque de Gas Estilizado */
+    .gas-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
     }
-    .gas-fill { background-color: #2ECC71; width: 100%; position: absolute; bottom: 0; transition: height 0.3s; }
-    .gas-label { position: absolute; width: 100%; text-align: center; top: 40%; font-weight: bold; font-size: 1.6rem; z-index: 2; }
+    .gas-container {
+        height: 200px; 
+        width: 60px; /* Hecho más delgado */
+        background-color: #f0f2f6;
+        border-radius: 30px; /* Bordes más redondeados para estilo moderno */
+        position: relative; 
+        border: 2px solid #ddd;
+        overflow: hidden;
+    }
+    .gas-fill { 
+        background-color: #2ECC71; 
+        width: 100%; 
+        position: absolute; 
+        bottom: 0; 
+        transition: height 0.5s ease-in-out; 
+    }
+    .gas-percentage {
+        font-weight: bold;
+        font-size: 1.2rem;
+        color: #1f2d3d;
+        margin-top: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -47,9 +73,7 @@ if 'indice' not in st.session_state: st.session_state.indice = 0
 if 'corriendo' not in st.session_state: st.session_state.corriendo = False
 if 'vista' not in st.session_state: st.session_state.vista = "principal"
 
-# --- LÓGICA DE TIEMPO REAL ---
 if not df.empty:
-    # Definimos el "presente" de la simulación
     t_presente = df.iloc[st.session_state.indice]['timestamp']
 
 # --- SIDEBAR ---
@@ -72,38 +96,27 @@ with st.sidebar:
 
 # --- VISTAS ---
 if not df.empty:
-    
-    # --- VISTA: HISTORIAL DE DATOS (CON FILTRO DE TIEMPO REAL) ---
     if st.session_state.vista == "datos":
         st.markdown("## 📊 Historial de Consumo")
         if st.button("⬅ Volver al Panel"):
             st.session_state.vista = "principal"
             st.rerun()
         
-        # Filtramos el dataframe original para que solo existan datos hasta el "presente"
         df_hasta_ahora = df[df['timestamp'] <= t_presente]
-        
         with st.container():
             st.info(f"Consulta datos registrados hasta: **{t_presente.strftime('%d/%m/%Y %H:%M')}**")
             col_f1, col_f2 = st.columns(2)
-            
             with col_f1:
-                # Solo meses que ya ocurrieron
                 meses_disponibles = df_hasta_ahora['timestamp'].dt.month_name().unique()
                 mes_sel = st.selectbox("Seleccionar Mes", options=meses_disponibles)
-            
             with col_f2:
-                # Solo días de ese mes que ya ocurrieron
                 dias_disponibles = df_hasta_ahora[df_hasta_ahora['timestamp'].dt.month_name() == mes_sel]['timestamp'].dt.day.unique()
                 dia_sel = st.selectbox("Seleccionar Día", options=dias_disponibles)
             
             df_filtrado = df_hasta_ahora[(df_hasta_ahora['timestamp'].dt.month_name() == mes_sel) & 
                                         (df_hasta_ahora['timestamp'].dt.day == dia_sel)]
-            
-            st.write(f"Mostrando registros del **{dia_sel} de {mes_sel}**:")
             st.dataframe(df_filtrado, use_container_width=True)
 
-    # --- VISTA: PANEL PRINCIPAL ---
     elif st.session_state.vista == "principal":
         actual = df.iloc[st.session_state.indice]
         st.markdown(f"## 🏠 Monitoreo: Familia Montoya")
@@ -122,8 +135,8 @@ if not df.empty:
 
         st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
 
-        # Fila 2: Gráficas y Gas
-        col_graf, col_gas = st.columns([4, 1.2])
+        # Fila 2: Gráficas y Gas (Rediseñado)
+        col_graf, col_gas = st.columns([4, 0.8]) # Espacio ajustado para el gas delgado
         ventana = df.iloc[max(0, st.session_state.indice-30):st.session_state.indice+1].set_index('timestamp')
 
         with col_graf:
@@ -138,7 +151,15 @@ if not df.empty:
         with col_gas:
             st.caption("⛽ Nivel de Gas")
             v_gas = actual['gas_nivel']
-            st.markdown(f'<div class="gas-container"><div class="gas-label">{v_gas:.1f}%</div><div class="gas-fill" style="height: {v_gas}%;"></div></div>', unsafe_allow_html=True)
+            # HTML para el tanque delgado y centrado
+            st.markdown(f"""
+                <div class="gas-wrapper">
+                    <div class="gas-container">
+                        <div class="gas-fill" style="height: {v_gas}%;"></div>
+                    </div>
+                    <div class="gas-percentage">{v_gas:.1f}%</div>
+                </div>
+            """, unsafe_allow_html=True)
 
         # Fila 3: Botones
         st.markdown("---")
