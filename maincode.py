@@ -137,23 +137,51 @@ if not df_raw.empty:
         else:
             st.info("No hay alarmas registradas hasta el momento.")
 
-    # --- NUEVA SECCIÓN: DIRECTORIO ---
+    # --- NUEVA SECCIÓN: DIRECTORIO DINÁMICO ---
     elif st.session_state.vista == "directorio":
         st.header("📇 Directorio de Contactos de Emergencia")
         if st.button("⬅ Volver"): 
             st.session_state.vista = "principal"
             st.rerun()
-        
-        contactos = [
-            {"Nombre": "Soporte Gas LP", "Teléfono": "555-0123", "Relación": "Proveedor"},
-            {"Nombre": "Electricista Confianza", "Teléfono": "555-0987", "Relación": "Mantenimiento"},
-            {"Nombre": "Bomberos Locales", "Teléfono": "911", "Relación": "Emergencia"},
-            {"Nombre": "Administración Condominio", "Teléfono": "555-4433", "Relación": "Administración"}
-        ]
-        
-        st.table(contactos)
+
+        import os
+        # Función interna para manejar la base de datos del directorio
+        def gestionar_contactos():
+            if os.path.exists('directorio_personal.csv'):
+                return pd.read_csv('directorio_personal.csv')
+            # Contactos iniciales si el archivo no existe
+            data_inicial = [
+                {"Nombre": "Soporte Gas LP", "Teléfono": "555-0123", "Relación": "Proveedor"},
+                {"Nombre": "Electricista Confianza", "Teléfono": "555-0987", "Relación": "Mantenimiento"},
+                {"Nombre": "Bomberos Locales", "Teléfono": "911", "Relación": "Emergencia"}
+            ]
+            return pd.DataFrame(data_inicial)
+
+        df_contactos = gestionar_contactos()
+
+        # Formulario para ingresar nuevo contenido
+        with st.form("nuevo_contacto", clear_on_submit=True):
+            st.subheader("➕ Agregar Nuevo Contacto")
+            col_n, col_t, col_r = st.columns(3)
+            nuevo_nom = col_n.text_input("Nombre")
+            nuevo_tel = col_t.text_input("Teléfono")
+            nuevo_rel = col_r.text_input("Relación")
+            
+            if st.form_submit_button("Guardar Contacto"):
+                if nuevo_nom and nuevo_tel:
+                    nueva_fila = pd.DataFrame([{"Nombre": nuevo_nom, "Teléfono": nuevo_tel, "Relación": nuevo_rel}])
+                    df_contactos = pd.concat([df_contactos, nueva_fila], ignore_index=True)
+                    df_contactos.to_csv('directorio_personal.csv', index=False)
+                    st.success(f"✅ {nuevo_nom} guardado correctamente.")
+                    st.rerun()
+                else:
+                    st.error("Por favor llena Nombre y Teléfono.")
+
+        st.markdown("---")
+        st.subheader("📋 Lista de Contactos")
+        st.dataframe(df_contactos, use_container_width=True)
         st.info("💡 Estos contactos están disponibles para respuesta rápida ante alarmas críticas.")
-        st.stop() # Muro de seguridad para evitar ejecución del bucle principal
+        st.stop() # Muro de seguridad
 
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
@@ -191,12 +219,10 @@ if not df_raw.empty:
             """, unsafe_allow_html=True)
 
         st.markdown("---")
-        # Ajuste de columnas para incluir el nuevo botón
         n1, n2, n3 = st.columns([1, 1, 1])
         if n1.button("📊 Historial Datos", use_container_width=True): st.session_state.vista = "datos"; st.rerun()
         if n2.button("🚨 Historial Alarmas", use_container_width=True): st.session_state.vista = "alarmas"; st.rerun()
         if n3.button("📇 Directorio", use_container_width=True): st.session_state.vista = "directorio"; st.rerun()
-
 # 8. BUCLE
 if st.session_state.corriendo and st.session_state.vista == "principal":
     if st.session_state.indice < len(df_raw) - 1:
