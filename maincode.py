@@ -38,18 +38,15 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. CARGA DE DATOS (REFORZADA PARA ESTABILIDAD)
+# 3. CARGA DE DATOS (REFORZADA)
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv('datos_domotia_final.csv')
         df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize(None)
         
-        # --- PARCHE DE ESTABILIDAD PARA GAS ---
-        # Limpiamos nulos en cascada: adelante, atrás y finalmente ceros.
-        df['gas_nivel'] = df['gas_nivel'].ffill().bfill().fillna(0)
-        # Aseguramos que la columna sea tratada como flotante
-        df['gas_nivel'] = df['gas_nivel'].astype(float)
+        # PARCHE ESTABILIDAD GAS: ffill -> bfill -> 0
+        df['gas_nivel'] = df['gas_nivel'].ffill().bfill().fillna(0).astype(float)
         
         df_al = pd.read_csv('alertas_historico.csv')
         df_al['timestamp'] = pd.to_datetime(df_al['timestamp']).dt.tz_localize(None)
@@ -58,22 +55,7 @@ def load_data():
         st.error(f"Error al cargar datos: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
-# ... (El resto del código se mantiene igual)
-
-# En la sección 7 (Panel Principal), asegúrate de tener esto para el renderizado:
-with c_gas:
-    st.caption("⛽ Nivel de Gas")
-    # Forzamos la extracción como float puro para evitar que Streamlit lea objetos residuales
-    v_gas_ui = float(actual_row['gas_nivel']) 
-    
-    st.markdown(f"""
-        <div class="gas-wrapper">
-            <div class="gas-container">
-                <div class="gas-fill" style="height: {v_gas_ui}%;"></div>
-            </div>
-            <div class="gas-percentage">{v_gas_ui:.1f}%</div>
-        </div>
-    """, unsafe_allow_html=True)
+df_raw, df_alertas_raw = load_data()
 
 # 4. ESTADO DE SESIÓN
 if 'indice' not in st.session_state: st.session_state.indice = 0
@@ -116,12 +98,11 @@ with st.sidebar:
     else:
         st.write("Sin alertas registradas.")
 
-# 7. VISTAS (CORREGIDAS)
+# 7. VISTAS
 if not df_raw.empty:
     if st.session_state.vista == "datos":
         st.header("📊 Historial de Telemetría")
-        if st.button("⬅ Volver"): 
-            st.session_state.vista = "principal"; st.rerun()
+        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
         meses = df_presente['timestamp'].dt.month_name().unique()
         mes_sel = st.selectbox("Selecciona Mes", options=meses)
         dias = df_presente[df_presente['timestamp'].dt.month_name() == mes_sel]['timestamp'].dt.day.unique()
@@ -131,8 +112,7 @@ if not df_raw.empty:
 
     elif st.session_state.vista == "alarmas":
         st.header("🚨 Histórico de Alarmas")
-        if st.button("⬅ Volver"): 
-            st.session_state.vista = "principal"; st.rerun()
+        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
         if not df_alertas_presente.empty:
             meses_al = df_alertas_presente['timestamp'].dt.month_name().unique()
             mes_al_sel = st.selectbox("Selecciona Mes", options=meses_al)
@@ -141,17 +121,17 @@ if not df_raw.empty:
             al_fil = df_alertas_presente[(df_alertas_presente['timestamp'].dt.month_name() == mes_al_sel) & (df_alertas_presente['timestamp'].dt.day == dia_al_sel)]
             st.table(al_fil.sort_values(by='timestamp', ascending=False))
         else:
-            st.info("No hay alarmas registradas.")
+            st.info("No hay alarmas.")
 
     elif st.session_state.vista == "directorio":
-        st.header("📞 Directorio de Emergencia")
-        if st.button("⬅ Volver"): 
-            st.session_state.vista = "principal"; st.rerun()
+        st.header("📞 Directorio")
+        if st.button("⬅ Volver"): st.session_state.vista = "principal"; st.rerun()
         st.table(pd.DataFrame({"Servicio": ["Emergencias", "Fugas Gas", "Agua"], "Número": ["911", "800-GAS-LINE", "555-0102"]}))
 
     elif st.session_state.vista == "principal":
         st.title("🏠 Monitoreo Familia Montoya")
-        st.caption(f"Fecha de simulación: {t_presente.strftime('%d/%m/%Y %H:%M:%S')}")
+        st.caption(f"Simulación: {t_presente.strftime('%d/%m/%Y %H:%M:%S')}")
+        
         cols = st.columns(4)
         met = [("Agua (L) 💧", actual_row["consumo_agua"], "{:.1f}"), ("Energía (kWh) ⚡", actual_row["consumo_electrico"], "{:.3f}"),
                ("Humedad (%) ☁️", actual_row["humedad_interior"], "{:.1f}"), ("Temp (°C) 🌡️", actual_row["temperatura_int"], "{:.1f}")]
@@ -159,15 +139,26 @@ if not df_raw.empty:
             with cols[i]: st.markdown(f'<div class="metric-card"><div class="metric-title">{l}</div><div class="metric-value">{f.format(v)}</div></div>', unsafe_allow_html=True)
 
         st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
+        
         c_graf, c_gas = st.columns([4, 0.8])
         ventana = df_presente.tail(30).set_index('timestamp')
         with c_graf:
             g1, g2 = st.columns(2)
             with g1: st.area_chart(ventana['consumo_agua'], height=250)
             with g2: st.line_chart(ventana['consumo_electrico'], height=250, color="#FFB703")
+        
+        # EL RENDERIZADO DEL GAS AHORA ESTÁ DENTRO DE LA VISTA PRINCIPAL
         with c_gas:
+            st.caption("⛽ Nivel de Gas")
             v_gas_ui = float(actual_row['gas_nivel'])
-            st.markdown(f'<div class="gas-wrapper"><div class="gas-container"><div class="gas-fill" style="height: {v_gas_ui}%;"></div></div><div class="gas-percentage">{v_gas_ui:.1f}%</div></div>', unsafe_allow_html=True)
+            st.markdown(f"""
+                <div class="gas-wrapper">
+                    <div class="gas-container">
+                        <div class="gas-fill" style="height: {v_gas_ui}%;"></div>
+                    </div>
+                    <div class="gas-percentage">{v_gas_ui:.1f}%</div>
+                </div>
+            """, unsafe_allow_html=True)
 
         st.markdown("---")
         n1, n2, n3, _ = st.columns(4)
