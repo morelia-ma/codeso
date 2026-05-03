@@ -137,7 +137,7 @@ if not df_raw.empty:
         else:
             st.info("No hay alarmas registradas hasta el momento.")
 
-    # --- NUEVA SECCIÓN: DIRECTORIO DINÁMICO ---
+    # --- SECCIÓN: DIRECTORIO DINÁMICO (ORDEN MODIFICADO) ---
     elif st.session_state.vista == "directorio":
         st.header("📇 Directorio de Contactos de Emergencia")
         if st.button("⬅ Volver"): 
@@ -145,7 +145,6 @@ if not df_raw.empty:
             st.rerun()
 
         import os
-        # Función interna para manejar la base de datos del directorio
         def gestionar_contactos():
             if os.path.exists('directorio_personal.csv'):
                 return pd.read_csv('directorio_personal.csv')
@@ -158,7 +157,14 @@ if not df_raw.empty:
 
         df_contactos = gestionar_contactos()
 
-        # Formulario para ingresar nuevo contenido
+        # 1. LISTA DE CONTACTOS (PRIMERO)
+        st.subheader("📋 Lista de Contactos")
+        st.dataframe(df_contactos, use_container_width=True)
+        st.info("💡 Estos contactos están disponibles para respuesta rápida ante alarmas críticas.")
+
+        st.markdown("---")
+
+        # 2. AÑADIR CONTACTOS (DESPUÉS)
         with st.form("nuevo_contacto", clear_on_submit=True):
             st.subheader("➕ Agregar Nuevo Contacto")
             col_n, col_t, col_r = st.columns(3)
@@ -176,8 +182,7 @@ if not df_raw.empty:
                 else:
                     st.error("Por favor llena Nombre y Teléfono.")
 
-        # --- SECCIÓN PARA ELIMINAR CONTACTOS ---
-        st.markdown("---")
+        # 3. ELIMINAR CONTACTOS (AL FINAL)
         with st.expander("🗑️ Gestionar / Eliminar Contactos"):
             contactos_a_eliminar = st.multiselect("Selecciona contactos para eliminar:", options=df_contactos['Nombre'].tolist())
             if st.button("Eliminar Seleccionados", type="primary"):
@@ -188,10 +193,7 @@ if not df_raw.empty:
                     st.rerun()
                 else:
                     st.info("No has seleccionado ningún contacto.")
-
-        st.subheader("📋 Lista de Contactos")
-        st.dataframe(df_contactos, use_container_width=True)
-        st.info("💡 Estos contactos están disponibles para respuesta rápida ante alarmas críticas.")
+        
         st.stop() 
 
     elif st.session_state.vista == "principal":
