@@ -83,14 +83,25 @@ with st.sidebar:
             st.markdown(f"""<div class="prediction-card"><div class="prediction-title">🔮 Predicción</div>
             <div class="prediction-text">Nivel bajo ({nivel_gas_val:.1f}%). Agotamiento probable en <b>10 días</b>.</div></div>""", unsafe_allow_html=True)
 
-    st.subheader("🔔 Últimas Alertas")
+    st.subheader("🔔 Últimas Alertas (24h)")
     if not df_alertas_presente.empty:
-        alertas_recientes = df_alertas_presente.tail(10).copy()
-        alertas_recientes['fecha_solo'] = alertas_recientes['timestamp'].dt.date
-        alertas_unicas = alertas_recientes.sort_values('timestamp').drop_duplicates(subset=['fecha_solo', 'mensaje'], keep='last')
+        # --- FILTRO DE 24 HORAS ---
+        # Solo alertas entre (Tiempo Presente - 24h) y (Tiempo Presente)
+        limite_24h = t_presente - timedelta(hours=24)
+        alertas_recientes = df_alertas_presente[df_alertas_presente['timestamp'] >= limite_24h].copy()
         
-        for _, fila in alertas_unicas.tail(3).iterrows():
-            st.caption(f"🕒 {fila['timestamp'].strftime('%H:%M')} - {fila['mensaje']}")
+        if not alertas_recientes.empty:
+            # Quitamos duplicados por mensaje en el mismo día para no saturar
+            alertas_recientes['fecha_solo'] = alertas_recientes['timestamp'].dt.date
+            alertas_unicas = alertas_recientes.sort_values('timestamp').drop_duplicates(subset=['fecha_solo', 'mensaje'], keep='last')
+            
+            # Mostramos las últimas 3 con FECHA Y HORA
+            for _, fila in alertas_unicas.tail(3).iterrows():
+                # Formato: 15/04 22:47
+                fecha_hora = fila['timestamp'].strftime('%d/%m %H:%M')
+                st.caption(f"📅 {fecha_hora} - {fila['mensaje']}")
+        else:
+            st.write("Sin alertas en las últimas 24h.")
     else:
         st.write("Sin alertas registradas.")
 
